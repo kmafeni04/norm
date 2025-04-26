@@ -47,7 +47,7 @@ function norm.new(conf: norm.Config): (norm.Db, string)
 end
 
 local Schema = @record{}
-local Schema.migration = @function(db: norm.Db): void
+local Schema.migration = @function(db: norm.Db): (string)
 
 local Schema.ColumnOptions = @record{
   default_val: string,
@@ -109,12 +109,11 @@ local Schema.Column = @record{
   opts: Schema.ColumnOptions
 }
 
--- TODO: finish the implementation
-function Schema.create_table(db: norm.Db, name: string, columns: sequence(Schema.Column))
+function Schema.create_table(db: norm.Db, name: string, columns: sequence(Schema.Column)): string
   assert(name ~= "", "table name cannot be an empty string")
   assert(#columns > 0, "Cannot have an empty list of columns")
   local sb: stringbuilder
-  sb:write("CREATE TABLE IF NOT EXISTS " .. name .. " (\n")
+  sb:write("CREATE TABLE IF NOT EXISTS \"" .. name .. "\" (\n")
   for i, v in ipairs(columns) do
     assert(v.name ~= "", "column name cannot be an empty string")
     sb:write(('  "%s" %s,\n'):format(v.name, schema_type_tostring(v.type, v.opts)))
@@ -122,23 +121,77 @@ function Schema.create_table(db: norm.Db, name: string, columns: sequence(Schema
   sb:rollback(2)
   sb:write("\n);")
   local sql = sb:promote()
+  print(sql)
 
   switch db.kind do
     case norm.DbKind.sqlite then
-      assert(sqlite.create_table(db.sqlite_db, sql), "Failed to create table for sql:\n" .. sql)
+      return sqlite.create_table(db.sqlite_db, sql)
+    else
+      return "UNREACHABLE"
   end
 end
 
 local norm.Schema = Schema
 
 function norm.migrate(db: norm.Db, migrations: hashmap(string, Schema.migration))
-  Schema.create_table(db, "norm_migrations", {
-    {"id", Schema.Type.integer, { primary_key = true }},
-    {"migration", Schema.Type.integer}
-  })
-  -- Figure out the right way to ensure the key is not already in the table before running
+  switch db.kind do
+    case norm.DbKind.sqlite then
+      if not sqlite.table_exists(db.sqlite_db, "norm_migrations") then
+        print("Creating migrations table")
+        Schema.create_table(db, "norm_migrations", {
+          {"id", Schema.ColumnType.integer, { primary_key = true }},
+          {"migration", Schema.ColumnType.integer, { unique = true }}
+        })
+      end
+  end
+  switch db.kind do
+    case norm.DbKind.sqlite then
+      sqlite.begin_transaction(db.sqlite_db)
+  end
+  local err: string
+  local rows: sequence(hashmap(string, string))
+  local migrated: hashmap(string, boolean)
+  local ran_migrations: uinteger
+  switch db.kind do
+    case norm.DbKind.sqlite then
+    local query_rows, query_err = sqlite.query(db.sqlite_db, "SELECT migration FROM \"norm_migrations\"")
+    if query_err ~= "" then
+      err = query_err
+      goto END
+    end
+    for _, col in ipairs(query_rows) do
+      migrated[col["migration"]] = true
+    end
+    rows = query_rows
+  end
   for k, v in pairs(migrations) do
-    v(db)
+    if not migrated:has(k) then
+      print("Migrating: " .. k)
+      switch db.kind do
+        case norm.DbKind.sqlite then
+          local vals: hashmap(string, string)
+          vals["migration"] = k
+          sqlite.insert(db.sqlite_db, "norm_migrations", vals)
+      end
+      local create_err = v(db)
+      if create_err ~= "" then
+        err = create_err
+        break
+      end
+      ran_migrations = ran_migrations + 1
+    end
+  end
+  ::END::
+  switch db.kind do
+    case norm.DbKind.sqlite then
+      if err ~= "" then
+        print("Failed to migrate: " .. err)
+        sqlite.rollback(db.sqlite_db)
+        print("Rolling back")
+      else
+        sqlite.commit(db.sqlite_db)
+        print(("Ran %d migrations"):format(ran_migrations))
+      end
   end
 end
 
@@ -154,12 +207,29 @@ assert(err == "", err)
 local migrations: hashmap(string, norm.Schema.migration)
 local schema = norm.Schema
 local type = schema.ColumnType
-migrations[1] = function(db: norm.Db)
-  schema.create_table(db, "users", {
-    {"id", type.integer, { primary_key = true }},
-    {"name", type.text},
+migrations["11"] = function(db: norm.Db): string
+  local err = schema.create_table(db, "users", {
+    {"name", type.text, { primary_key = true }},
+    {"id", type.integer},
     {"balance", type.real}
   })
+  if err ~= "" then
+    return err
+  end
+
+  return ""
+end
+migrations["21"] = function(db: norm.Db): string
+  local err = schema.create_table(db, "players", {
+    {"name", type.text, { primary_key = true }},
+    {"id", type.integer},
+    {"balance", type.real}
+  })
+  if err ~= "" then
+    return err
+  end
+
+  return ""
 end
 
 norm.migrate(db, migrations)

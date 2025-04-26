@@ -27,7 +27,7 @@ function M.create_table(db: *sqlite3, sql: string): string
   local err_msg: cstring
   local rc = sqlite3_exec(db, sql, nilptr, nilptr, &err_msg)
   if rc ~= SQLITE_OK then
-    local str: string = err_msg
+    local str: string = string.copy(err_msg)
     sqlite3_free(err_msg)
     return str
   end
@@ -35,11 +35,100 @@ function M.create_table(db: *sqlite3, sql: string): string
 end
 
 -- TODO: Error could be anything so fix this implementation
-function M.table_exists(table_name: string, db: *sqlite3): boolean
+function M.table_exists(db: *sqlite3, table_name: string): boolean
+  local found_table = false
+
+  local function callback(userdata: pointer, col_count: cint, col_values: pointer(cstring), col_names: pointer(cstring)): cint
+    $(@*boolean)(userdata) = true
+    return 0 -- continue execution
+  end
   local sql = ("SELECT name FROM sqlite_master WHERE type='table' AND name='%s';"):format(table_name)
   local err_msg: cstring
-  local rc = sqlite3_exec(db, sql, nilptr, nilptr, &err_msg)
-  return rc == SQLITE_OK
+  local rc = sqlite3_exec(db, sql, &callback, &found_table, &err_msg)
+  return found_table
+end
+
+function M.begin_transaction(db: *sqlite3): string
+  local err_msg: cstring
+  local rc = sqlite3_exec(db, "BEGIN TRANSACTION;", nilptr, nilptr, &err_msg)
+  if rc ~= SQLITE_OK then
+    local str: string = string.copy(err_msg)
+    sqlite3_free(err_msg)
+    return str
+  end
+  return ""
+end
+
+function M.commit(db: *sqlite3)
+  local err_msg: cstring
+  local rc = sqlite3_exec(db, "COMMIT;", nilptr, nilptr, &err_msg)
+  if rc ~= SQLITE_OK then
+    local str: string = string.copy(err_msg)
+    sqlite3_free(err_msg)
+    return str
+  end
+  return ""
+end
+
+function M.rollback(db: *sqlite3)
+  local err_msg: cstring
+  local rc = sqlite3_exec(db, "ROLLBACK;", nilptr, nilptr, &err_msg)
+  if rc ~= SQLITE_OK then
+    local str: string = string.copy(err_msg)
+    sqlite3_free(err_msg)
+    return str
+  end
+  return ""
+end
+
+function M.query(db: *sqlite3, sql: string): (sequence(hashmap(string, string)), string)
+  local rows: sequence(hashmap(string, string))
+
+  local stmt: *sqlite3_stmt
+  local rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nilptr)
+  if rc ~= SQLITE_OK then
+    return rows, string.format("Failed to prepare statement: %s", sqlite3_errmsg(db))
+  end
+
+  while true do
+    rc = sqlite3_step(stmt)
+    if rc ~= SQLITE_ROW then
+      break
+    end
+    local ncols = sqlite3_column_count(stmt)
+    local cols: hashmap(string, string)
+    for i = 0, <ncols do
+      local text: cstring = (@cstring)(sqlite3_column_text(stmt, i))
+      local name: cstring = (@cstring)(sqlite3_column_name(stmt, i))
+      cols[name] = (text ~= nilptr and string.copy(text) or "NULL")
+    end
+    rows:push(cols)
+  end
+  return rows, ""
+end
+
+function M.insert(db: *sqlite3, table_name: string, values: hashmap(string, string)): string
+  local sb: stringbuilder
+  sb:write(('INSERT INTO "%s" ('): format(table_name))
+  for k in pairs(values) do
+    sb:write(('"%s", '):format(k))
+  end
+  sb:rollback(2)
+  sb:write(")")
+  sb:write(" VALUES (")
+  for _, v in pairs(values) do
+    sb:write(('"%s", '):format(v))
+  end
+  sb:rollback(2)
+  sb:write(")")
+  local err_msg: cstring
+  local rc = sqlite3_exec(db, sb:promote(), nilptr, nilptr, &err_msg)
+  if rc ~= SQLITE_OK then
+    local str: string = string.copy(err_msg)
+    sqlite3_free(err_msg)
+    return str
+  end
+  return ""
 end
 
 return M
