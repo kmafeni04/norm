@@ -1,0 +1,45 @@
+require "..libs.sqlite"
+
+local M = @record{}
+
+local M.type: type = sqlite3
+
+function M.new(name: string): (*sqlite3, string)
+  local sqlite_db: *sqlite3
+  local rc: cint
+
+  if name == "" then return sqlite_db, "Database name cannot be an empty string" end
+
+  rc = sqlite3_open(name , &sqlite_db)
+
+  if rc ~= SQLITE_OK then
+    sqlite3_close(sqlite_db)
+    return sqlite_db, ("Cannot open database: %s \n"):format(sqlite3_errmsg(sqlite_db))
+  end
+  return sqlite_db, ""
+end
+
+function M.destroy(db: *sqlite3)
+  sqlite3_close(db)
+end
+
+function M.create_table(db: *sqlite3, sql: string): string
+  local err_msg: cstring
+  local rc = sqlite3_exec(db, sql, nilptr, nilptr, &err_msg)
+  if rc ~= SQLITE_OK then
+    local str: string = err_msg
+    sqlite3_free(err_msg)
+    return str
+  end
+  return ""
+end
+
+-- TODO: Error could be anything so fix this implementation
+function M.table_exists(table_name: string, db: *sqlite3): boolean
+  local sql = ("SELECT name FROM sqlite_master WHERE type='table' AND name='%s';"):format(table_name)
+  local err_msg: cstring
+  local rc = sqlite3_exec(db, sql, nilptr, nilptr, &err_msg)
+  return rc == SQLITE_OK
+end
+
+return M

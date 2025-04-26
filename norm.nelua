@@ -1,0 +1,166 @@
+require "io"
+
+local sqlite = require ".utils.sqlite"
+
+local norm = @record{}
+
+local norm.DbKind = @enum{
+  not_set = 0,
+  sqlite,
+  pg,
+  mysql
+}
+
+local norm.Config = @record{
+  kind: norm.DbKind,
+  sqlite: record{
+    name: string
+  },
+  postgress: record{},
+  mysql: record{}
+}
+
+local Db = @record{
+  kind: norm.DbKind,
+  sqlite_db: *sqlite.type
+}
+
+function Db:destroy()
+  switch self.kind do
+    case norm.DbKind.sqlite then
+      sqlite.destroy(self.sqlite_db)
+  end
+end
+
+local norm.Db = Db
+
+function norm.new(conf: norm.Config): (norm.Db, string)
+  switch conf.kind do
+    case norm.DbKind.not_set then      
+      return {}, "DB object not initialised"
+    case norm.DbKind.sqlite then
+      local sqlite_db, err = sqlite.new(conf.sqlite.name)
+      if err ~= "" then return {}, err end
+    return {kind = conf.kind, sqlite_db = sqlite_db}, ""
+  end
+  return {}, "UNREACHABLE"
+end
+
+local Schema = @record{}
+local Schema.migration = @function(db: norm.Db): void
+
+local Schema.ColumnOptions = @record{
+  default_val: string,
+  is_null: boolean,
+  unique: boolean,
+  primary_key: boolean
+}
+
+local Schema.ColumnType = @enum{
+  not_set = 0,
+  integer,
+  numeric,
+  real,
+  text,
+  blob,
+  any
+}
+
+local function schema_type_tostring(st: Schema.ColumnType, opts: Schema.ColumnOptions): string
+  local sb: stringbuilder
+  switch st do
+    case Schema.ColumnType.integer then
+      sb:write("INTEGER ")
+      if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
+    case Schema.ColumnType.numeric then
+      sb:write("NUMERIC ")
+      if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
+    case Schema.ColumnType.real then
+      sb:write("REAL ")
+      if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
+    case Schema.ColumnType.text then
+      sb:write("TEXT ")
+    case Schema.ColumnType.blob then
+      sb:write("BLOB ")
+    case Schema.ColumnType.any then
+      sb:write("ANY ")
+    else
+      error("invalid Schema.Type: " .. st)
+  end
+  if not opts.is_null then
+    sb:write("NOT NULL ")
+  end
+  if opts.default_val ~= "" then
+    sb:write("DEFAULT " .. opts.default_val .. " ")
+  end
+  if opts.unique then
+    sb:write("UNIQUE ")
+  end
+  if opts.primary_key then
+    sb:write("PRIMARY KEY ")
+  end
+  sb:rollback(1)
+  return sb:promote()
+end
+
+local Schema.Column = @record{
+  name: string,
+  type: Schema.ColumnType,
+  opts: Schema.ColumnOptions
+}
+
+-- TODO: finish the implementation
+function Schema.create_table(db: norm.Db, name: string, columns: sequence(Schema.Column))
+  assert(name ~= "", "table name cannot be an empty string")
+  assert(#columns > 0, "Cannot have an empty list of columns")
+  local sb: stringbuilder
+  sb:write("CREATE TABLE IF NOT EXISTS " .. name .. " (\n")
+  for i, v in ipairs(columns) do
+    assert(v.name ~= "", "column name cannot be an empty string")
+    sb:write(('  "%s" %s,\n'):format(v.name, schema_type_tostring(v.type, v.opts)))
+  end
+  sb:rollback(2)
+  sb:write("\n);")
+  local sql = sb:promote()
+
+  switch db.kind do
+    case norm.DbKind.sqlite then
+      assert(sqlite.create_table(db.sqlite_db, sql), "Failed to create table for sql:\n" .. sql)
+  end
+end
+
+local norm.Schema = Schema
+
+function norm.migrate(db: norm.Db, migrations: hashmap(string, Schema.migration))
+  Schema.create_table(db, "norm_migrations", {
+    {"id", Schema.Type.integer, { primary_key = true }},
+    {"migration", Schema.Type.integer}
+  })
+  -- Figure out the right way to ensure the key is not already in the table before running
+  for k, v in pairs(migrations) do
+    v(db)
+  end
+end
+
+local db, err = norm.new({
+  kind = norm.DbKind.sqlite,
+  sqlite = {
+    name = "hello.db"
+  }
+})
+
+assert(err == "", err)
+
+local migrations: hashmap(string, norm.Schema.migration)
+local schema = norm.Schema
+local type = schema.ColumnType
+migrations[1] = function(db: norm.Db)
+  schema.create_table(db, "users", {
+    {"id", type.integer, { primary_key = true }},
+    {"name", type.text},
+    {"balance", type.real}
+  })
+end
+
+norm.migrate(db, migrations)
+return
