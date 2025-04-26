@@ -32,6 +32,32 @@ function Db:destroy()
   end
 end
 
+local DbClause = @record{
+  name: string,
+  val: string
+}
+
+function Db.clause(clause: sequence(DbClause)): string
+  local sb: stringbuilder
+  for _, v in ipairs(clause) do
+    sb:write(("%s %s "):format(v.name, v.val))
+    sb:write("AND ")
+  end
+  sb:rollback(#("AND "))
+  return sb:promote()
+end
+
+function Db:query(sql: string): (sequence(hashmap(string, string)), string)
+  switch self.kind do
+    case norm.DbKind.sqlite then
+    return sqlite.query(self.sqlite_db, sql)
+  end
+  return {}, "UNREACHABLE"
+end
+
+function Db:select(sql: string): (sequence(hashmap(string, string)), string)
+  return self:query("SELECT " .. sql)
+end
 
 local norm.Db = Db
 
@@ -48,7 +74,10 @@ function norm.new(conf: norm.Config): (norm.Db, string)
 end
 
 local Schema = @record{}
-local Schema.Migration = @function(db: norm.Db): (string)
+local Schema.Migration = @record{
+  id: string,
+  fn: function(db: norm.Db): (string)
+}
 
 local Schema.ColumnOptions = @record{
   default_val: string,
@@ -122,37 +151,38 @@ end
 local function db_start_transaction(db: Db)
   switch db.kind do
     case norm.DbKind.sqlite then
-      sqlite.begin_transaction(db.sqlite_db)
+      return sqlite.begin_transaction(db.sqlite_db)
+    else
+      return "UNREACHABLE"
   end
 end
 
 local function db_get_migrated(db: Db): hashmap(string, boolean)
   local migrated: hashmap(string, boolean)
-  switch db.kind do
-    case norm.DbKind.sqlite then
-    local query_rows, query_err = sqlite.query(db.sqlite_db, "SELECT migration FROM \"norm_migrations\"")
-    if query_err ~= "" then
-      return migrated
-    end
-    for _, col in ipairs(query_rows) do
-      migrated[col["migration"]] = true
-    end
+  local sql = "SELECT migration FROM \"norm_migrations\""
+  print(sql)
+  local query_rows, query_err = db:query(sql)
+  if query_err ~= "" then
+    return migrated
+  end
+  for _, col in ipairs(query_rows) do
+    migrated[col["migration"]] = true
   end
   return migrated
 end
 
-local function db_migrate(db: Db, migrated: hashmap(string, boolean), migrations: hashmap(string, Schema.Migration)): (uinteger, string)
+local function db_migrate(db: Db, migrated: hashmap(string, boolean), migrations: sequence(Schema.Migration)): (uinteger, string)
   local ran_migrations: uinteger
-  for k, v in pairs(migrations) do
-    if not migrated:has(k) then
-      print("Migrating: " .. k)
+  for _, v in pairs(migrations) do
+    if not migrated:has(v.id) then
+      print("Migrating: " .. v.id)
       switch db.kind do
         case norm.DbKind.sqlite then
           local vals: hashmap(string, string)
-          vals["migration"] = k
+          vals["migration"] = v.id
           sqlite.insert(db.sqlite_db, "norm_migrations", vals)
       end
-      local create_err = v(db)
+      local create_err = v.fn(db)
       if create_err ~= "" then
         return 0, create_err
       end
@@ -208,9 +238,10 @@ end
 
 local norm.Schema = Schema
 
-function norm.migrate(db: norm.Db, migrations: hashmap(string, Schema.Migration))
+function norm.migrate(db: norm.Db, migrations: sequence(Schema.Migration))
+  print("Running migrations")
   db_create_migration_table(db)
-  db_start_transaction(db)
+  local err = db_start_transaction(db)
   local migrated = db_get_migrated(db)
   local ran_migrations, err = db_migrate(db, migrated, migrations)
   db_commit_or_rollback(db, err, ran_migrations)
@@ -228,29 +259,35 @@ assert(err == "", err)
 local migrations: hashmap(string, norm.Schema.Migration)
 local schema = norm.Schema
 local type = schema.ColumnType
-migrations["11"] = function(db: norm.Db): string
-  local err = schema.create_table(db, "users", {
-    {"name", type.text, { primary_key = true }},
-    {"id", type.integer},
-    {"balance", type.real}
-  })
-  if err ~= "" then
-    return err
-  end
+norm.migrate(db, {
+  {
+    "11",
+    function(db: norm.Db): string
+      local err = schema.create_table(db, "players", {
+        {"id", type.integer, { primary_key = true }},
+        {"name", type.text},
+        {"balance", type.real}
+      })
+      if err ~= "" then
+        return err
+      end
 
-  return ""
-end
-migrations["21"] = function(db: norm.Db): string
-  local err = schema.create_table(db, "players", {
-    {"name", type.text, { primary_key = true }},
-    {"id", type.integer},
-    {"balance", type.real}
-  })
-  if err ~= "" then
-    return err
-  end
+      return ""
+    end
+  },
+  {
+    "21",
+    function(db: norm.Db): string
+      local err = schema.create_table(db, "players", {
+        {"name", type.text, { primary_key = true }},
+        {"id", type.integer},
+        {"balance", type.real}
+      })
+      if err ~= "" then
+        return err
+      end
 
-  return ""
-end
-
-norm.migrate(db, migrations)
+      return ""
+    end
+  }
+})
