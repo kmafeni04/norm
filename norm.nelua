@@ -32,6 +32,7 @@ function Db:destroy()
   end
 end
 
+
 local norm.Db = Db
 
 function norm.new(conf: norm.Config): (norm.Db, string)
@@ -47,7 +48,7 @@ function norm.new(conf: norm.Config): (norm.Db, string)
 end
 
 local Schema = @record{}
-local Schema.migration = @function(db: norm.Db): (string)
+local Schema.Migration = @function(db: norm.Db): (string)
 
 local Schema.ColumnOptions = @record{
   default_val: string,
@@ -109,6 +110,72 @@ local Schema.Column = @record{
   opts: Schema.ColumnOptions
 }
 
+local function db_run(db: Db, sql: string): string
+  switch db.kind do
+    case norm.DbKind.sqlite then
+      return sqlite.run(db.sqlite_db, sql)
+    else
+      return "UNREACHABLE"
+  end
+end
+
+local function db_start_transaction(db: Db)
+  switch db.kind do
+    case norm.DbKind.sqlite then
+      sqlite.begin_transaction(db.sqlite_db)
+  end
+end
+
+local function db_get_migrated(db: Db): hashmap(string, boolean)
+  local migrated: hashmap(string, boolean)
+  switch db.kind do
+    case norm.DbKind.sqlite then
+    local query_rows, query_err = sqlite.query(db.sqlite_db, "SELECT migration FROM \"norm_migrations\"")
+    if query_err ~= "" then
+      return migrated
+    end
+    for _, col in ipairs(query_rows) do
+      migrated[col["migration"]] = true
+    end
+  end
+  return migrated
+end
+
+local function db_migrate(db: Db, migrated: hashmap(string, boolean), migrations: hashmap(string, Schema.Migration)): (uinteger, string)
+  local ran_migrations: uinteger
+  for k, v in pairs(migrations) do
+    if not migrated:has(k) then
+      print("Migrating: " .. k)
+      switch db.kind do
+        case norm.DbKind.sqlite then
+          local vals: hashmap(string, string)
+          vals["migration"] = k
+          sqlite.insert(db.sqlite_db, "norm_migrations", vals)
+      end
+      local create_err = v(db)
+      if create_err ~= "" then
+        return 0, create_err
+      end
+      ran_migrations = ran_migrations + 1
+    end
+  end
+  return ran_migrations, ""
+end
+
+local function db_commit_or_rollback(db: Db, err: string, ran_migrations: uinteger)
+  switch db.kind do
+    case norm.DbKind.sqlite then
+      if err ~= "" then
+        print("Failed to migrate: " .. err)
+        sqlite.rollback(db.sqlite_db)
+        print("Rolling back")
+      else
+        sqlite.commit(db.sqlite_db)
+        print(("Ran %d migrations"):format(ran_migrations))
+      end
+  end
+end
+
 function Schema.create_table(db: norm.Db, name: string, columns: sequence(Schema.Column)): string
   assert(name ~= "", "table name cannot be an empty string")
   assert(#columns > 0, "Cannot have an empty list of columns")
@@ -123,17 +190,10 @@ function Schema.create_table(db: norm.Db, name: string, columns: sequence(Schema
   local sql = sb:promote()
   print(sql)
 
-  switch db.kind do
-    case norm.DbKind.sqlite then
-      return sqlite.create_table(db.sqlite_db, sql)
-    else
-      return "UNREACHABLE"
-  end
+  return db_run(db, sql)
 end
 
-local norm.Schema = Schema
-
-function norm.migrate(db: norm.Db, migrations: hashmap(string, Schema.migration))
+local function db_create_migration_table(db: Db)
   switch db.kind do
     case norm.DbKind.sqlite then
       if not sqlite.table_exists(db.sqlite_db, "norm_migrations") then
@@ -144,55 +204,16 @@ function norm.migrate(db: norm.Db, migrations: hashmap(string, Schema.migration)
         })
       end
   end
-  switch db.kind do
-    case norm.DbKind.sqlite then
-      sqlite.begin_transaction(db.sqlite_db)
-  end
-  local err: string
-  local rows: sequence(hashmap(string, string))
-  local migrated: hashmap(string, boolean)
-  local ran_migrations: uinteger
-  switch db.kind do
-    case norm.DbKind.sqlite then
-    local query_rows, query_err = sqlite.query(db.sqlite_db, "SELECT migration FROM \"norm_migrations\"")
-    if query_err ~= "" then
-      err = query_err
-      goto END
-    end
-    for _, col in ipairs(query_rows) do
-      migrated[col["migration"]] = true
-    end
-    rows = query_rows
-  end
-  for k, v in pairs(migrations) do
-    if not migrated:has(k) then
-      print("Migrating: " .. k)
-      switch db.kind do
-        case norm.DbKind.sqlite then
-          local vals: hashmap(string, string)
-          vals["migration"] = k
-          sqlite.insert(db.sqlite_db, "norm_migrations", vals)
-      end
-      local create_err = v(db)
-      if create_err ~= "" then
-        err = create_err
-        break
-      end
-      ran_migrations = ran_migrations + 1
-    end
-  end
-  ::END::
-  switch db.kind do
-    case norm.DbKind.sqlite then
-      if err ~= "" then
-        print("Failed to migrate: " .. err)
-        sqlite.rollback(db.sqlite_db)
-        print("Rolling back")
-      else
-        sqlite.commit(db.sqlite_db)
-        print(("Ran %d migrations"):format(ran_migrations))
-      end
-  end
+end
+
+local norm.Schema = Schema
+
+function norm.migrate(db: norm.Db, migrations: hashmap(string, Schema.Migration))
+  db_create_migration_table(db)
+  db_start_transaction(db)
+  local migrated = db_get_migrated(db)
+  local ran_migrations, err = db_migrate(db, migrated, migrations)
+  db_commit_or_rollback(db, err, ran_migrations)
 end
 
 local db, err = norm.new({
@@ -204,7 +225,7 @@ local db, err = norm.new({
 
 assert(err == "", err)
 
-local migrations: hashmap(string, norm.Schema.migration)
+local migrations: hashmap(string, norm.Schema.Migration)
 local schema = norm.Schema
 local type = schema.ColumnType
 migrations["11"] = function(db: norm.Db): string
@@ -233,4 +254,3 @@ migrations["21"] = function(db: norm.Db): string
 end
 
 norm.migrate(db, migrations)
-return

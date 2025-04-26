@@ -23,7 +23,7 @@ function M.destroy(db: *sqlite3)
   sqlite3_close(db)
 end
 
-function M.create_table(db: *sqlite3, sql: string): string
+function M.run(db: *sqlite3, sql: string): string
   local err_msg: cstring
   local rc = sqlite3_exec(db, sql, nilptr, nilptr, &err_msg)
   if rc ~= SQLITE_OK then
