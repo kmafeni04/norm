@@ -32,31 +32,45 @@ function Db:destroy()
   end
 end
 
-local DbClause = @record{
-  name: string,
-  val: string
-}
-
-function Db.clause(clause: sequence(DbClause)): string
-  local sb: stringbuilder
-  for _, v in ipairs(clause) do
-    sb:write(("%s %s "):format(v.name, v.val))
-    sb:write("AND ")
-  end
-  sb:rollback(#("AND "))
-  return sb:promote()
-end
-
-function Db:query(sql: string): (sequence(hashmap(string, string)), string)
+function Db:query(sql: string, params: hashmap(string, string)): (sequence(hashmap(string, string)), string)
   switch self.kind do
     case norm.DbKind.sqlite then
-    return sqlite.query(self.sqlite_db, sql)
+    return sqlite.query(self.sqlite_db, sql, params)
   end
   return {}, "UNREACHABLE"
 end
 
-function Db:select(sql: string): (sequence(hashmap(string, string)), string)
-  return self:query("SELECT " .. sql)
+function Db:select(sql: string, conditions: hashmap(string, string)): (sequence(hashmap(string, string)), string)
+  switch self.kind do
+    case norm.DbKind.sqlite then
+    return sqlite.select(self.sqlite_db, sql, conditions)
+  end
+  return {}, "UNREACHABLE"
+end
+
+function Db:insert(table_name: string, values: hashmap(string, string)): string
+  switch self.kind do
+    case norm.DbKind.sqlite then
+    return sqlite.insert(self.sqlite_db, table_name, values)
+  end
+  return "UNREACHABLE"
+end
+
+function Db:update(table_name: string, conditions: hashmap(string, string)): string
+  switch self.kind do
+    case norm.DbKind.sqlite then
+    return sqlite.update(self.sqlite_db, table_name, conditions)
+  end
+  return "UNREACHABLE"
+end
+
+
+function Db:delete(table_name: string, conditions: hashmap(string, string)): string
+  switch self.kind do
+    case norm.DbKind.sqlite then
+    return sqlite.delete(self.sqlite_db, table_name, conditions)
+  end
+  return "UNREACHABLE"
 end
 
 local norm.Db = Db
@@ -229,8 +243,7 @@ local function db_create_migration_table(db: Db)
       if not sqlite.table_exists(db.sqlite_db, "norm_migrations") then
         print("Creating migrations table")
         Schema.create_table(db, "norm_migrations", {
-          {"id", Schema.ColumnType.integer, { primary_key = true }},
-          {"migration", Schema.ColumnType.integer, { unique = true }}
+          {"migration", Schema.ColumnType.text, { primary_key = true }}
         })
       end
   end
@@ -263,10 +276,10 @@ norm.migrate(db, {
   {
     "11",
     function(db: norm.Db): string
-      local err = schema.create_table(db, "players", {
+      local err = schema.create_table(db, "users", {
         {"id", type.integer, { primary_key = true }},
-        {"name", type.text},
-        {"balance", type.real}
+        {"name", type.text, { unique = true }},
+        {"age", type.integer}
       })
       if err ~= "" then
         return err
@@ -279,9 +292,9 @@ norm.migrate(db, {
     "21",
     function(db: norm.Db): string
       local err = schema.create_table(db, "players", {
-        {"name", type.text, { primary_key = true }},
-        {"id", type.integer},
-        {"balance", type.real}
+        {"id", type.integer, { primary_key = true }},
+        {"name", type.text, { unique = true }},
+        {"age", type.integer}
       })
       if err ~= "" then
         return err
@@ -291,3 +304,39 @@ norm.migrate(db, {
     end
   }
 })
+
+local users_insert: hashmap(string, string)
+users_insert["name"] = "James"
+users_insert["age"] = "21"
+local err = db:insert("users", users_insert)
+assert(err == "", err)
+
+local users_select: hashmap(string, string)
+users_select["name"] = "James"
+users_select["age"] = "21"
+local rows, err = db:select("* FROM users", users_select)
+assert(err == "", err)
+
+for i, cols in ipairs(rows) do
+  for k, v in pairs(cols) do
+    print(k, v)
+  end
+end
+
+local users_delete: hashmap(string, string)
+users_delete["name"] = "James"
+users_delete["age"] = "21"
+local err = db:delete("users", users_delete)
+assert(err == "", err)
+
+local users_select: hashmap(string, string)
+users_select["name"] = "James"
+users_select["age"] = "21"
+local rows, err = db:select("* FROM users", users_select)
+assert(err == "", err)
+
+for i, cols in ipairs(rows) do
+  for k, v in pairs(cols) do
+    print(k, v)
+  end
+end

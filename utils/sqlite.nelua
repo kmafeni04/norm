@@ -81,13 +81,30 @@ function M.rollback(db: *sqlite3)
   return ""
 end
 
-function M.query(db: *sqlite3, sql: string): (sequence(hashmap(string, string)), string)
+function M.query(db: *sqlite3, sql: string, params: hashmap(string, string)): (sequence(hashmap(string, string)), string)
   local rows: sequence(hashmap(string, string))
 
   local stmt: *sqlite3_stmt
   local rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nilptr)
   if rc ~= SQLITE_OK then
     return rows, string.format("Failed to prepare statement: %s", sqlite3_errmsg(db))
+  end
+
+  -- Bind named parameters
+  for name, value in pairs(params) do
+    -- Parameter name must include the `:` (e.g., ":username")
+    local pname = ":" .. name
+    local index = sqlite3_bind_parameter_index(stmt, pname)
+    if index == 0 then
+      sqlite3_finalize(stmt)
+      return rows, string.format("Parameter '%s' not found in SQL statement.", pname)
+    end
+
+    rc = sqlite3_bind_text(stmt, index, value, -1, nilptr)
+    if rc ~= SQLITE_OK then
+      sqlite3_finalize(stmt)
+      return rows, string.format("Failed to bind parameter '%s': %s", pname, sqlite3_errmsg(db))
+    end
   end
 
   while true do
@@ -100,11 +117,27 @@ function M.query(db: *sqlite3, sql: string): (sequence(hashmap(string, string)),
     for i = 0, <ncols do
       local text: cstring = (@cstring)(sqlite3_column_text(stmt, i))
       local name: cstring = (@cstring)(sqlite3_column_name(stmt, i))
-      cols[name] = (text ~= nilptr and string.copy(text) or "NULL")
+      cols[string.copy(name)] = (text ~= nilptr and string.copy(text) or "NULL")
     end
     rows:push(cols)
   end
+
+  sqlite3_finalize(stmt)
   return rows, ""
+end
+
+function M.select(db: *sqlite3, sql: string, conditions: hashmap(string, string)): (sequence(hashmap(string, string)), string)
+  local sb: stringbuilder
+  if next(conditions) then
+    sb:write(" WHERE ")
+    for k, v in pairs(conditions) do
+      sb:write(('"%s" = :%s AND '):format(k, k))
+    end
+    sb:rollback(#(" AND "))
+  end
+  local final = "SELECT " .. sql .. sb:promote()
+  print(final)
+  return M.query(db, final, conditions)
 end
 
 function M.insert(db: *sqlite3, table_name: string, values: hashmap(string, string)): string
@@ -116,19 +149,51 @@ function M.insert(db: *sqlite3, table_name: string, values: hashmap(string, stri
   sb:rollback(2)
   sb:write(")")
   sb:write(" VALUES (")
-  for _, v in pairs(values) do
-    sb:write(('"%s", '):format(v))
+  for k in pairs(values) do
+    sb:write((':%s, '):format(k))
   end
   sb:rollback(2)
   sb:write(")")
-  local err_msg: cstring
-  local rc = sqlite3_exec(db, sb:promote(), nilptr, nilptr, &err_msg)
-  if rc ~= SQLITE_OK then
-    local str: string = string.copy(err_msg)
-    sqlite3_free(err_msg)
-    return str
+  local final = sb:promote()
+  print(final)
+  local _, err = M.query(db, final, values)
+  return err
+end
+
+function M.update(db: *sqlite3, table_name: string, values: hashmap(string, string), conditions: hashmap(string, string)): string
+  local sb: stringbuilder
+  local final_vals: hashmap(string, string)
+  sb:write(('UPDATE "%s" SET'):format(table_name))
+  for k, v in pairs(values) do
+    sb:write(('"%s" = :val_%s, '):format(k, k))
+    final_vals["val_".. k] = v
   end
-  return ""
+  sb:rollback(2)
+  if next(conditions) then
+    sb:write(" WHERE ")
+    for k, v in pairs(conditions) do
+      sb:write(('"%s" = :cond_%s, '):format(k, k))
+      final_vals["cond_".. k] = v
+    end
+    sb:rollback(2)
+  end
+  local final = sb:promote()
+  print(final)
+  local _, err = M.query(db, final, final_vals)
+  return err
+end
+
+function M.delete(db: *sqlite3, table_name: string, conditions: hashmap(string, string)): string
+  local sb: stringbuilder
+  sb:write(('DELETE FROM "%s" WHERE '):format(table_name))
+  for k, v in pairs(conditions) do
+    sb:write(('"%s" = :%s AND '):format(k, k))
+  end
+  sb:rollback(#(" AND "))
+  local final = sb:promote()
+  print(final)
+  local _, err = M.query(db, final, conditions)
+  return err
 end
 
 return M
