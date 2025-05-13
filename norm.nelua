@@ -89,7 +89,7 @@ end
 
 local Schema = @record{}
 local Schema.Migration = @record{
-  id: string,
+  name: string,
   fn: function(db: norm.Db): (string)
 }
 
@@ -188,12 +188,12 @@ end
 local function db_migrate(db: Db, migrated: hashmap(string, boolean), migrations: sequence(Schema.Migration)): (uinteger, string)
   local ran_migrations: uinteger
   for _, v in pairs(migrations) do
-    if not migrated:has(v.id) then
-      print("Migrating: " .. v.id)
+    if not migrated:has(v.name) then
+      print("Migrating: " .. v.name)
       switch db.kind do
         case norm.DbKind.sqlite then
           local vals: hashmap(string, string)
-          vals["migration"] = v.id
+          vals["migration"] = v.name
           sqlite.insert(db.sqlite_db, "norm_migrations", vals)
       end
       local create_err = v.fn(db)
@@ -234,6 +234,11 @@ function Schema.create_table(db: norm.Db, name: string, columns: sequence(Schema
   local sql = sb:promote()
   print(sql)
 
+  return db_run(db, sql)
+end
+
+function Schema.drop_table(db: norm.Db, name: string)
+  local sql = ('DROP TABLE IF EXISTS "%s";'):format(name)
   return db_run(db, sql)
 end
 
