@@ -26,6 +26,7 @@ end
 
 function M.run(db: *sqlite3, sql: string): string
   local err_msg: cstring
+  print(sql)
   local rc = sqlite3_exec(db, sql, nilptr, nilptr, &err_msg)
   if rc ~= SQLITE_OK then
     local str: string = string.copy(err_msg)

@@ -248,14 +248,12 @@ function Schema.create_table(db: norm.Db, name: string, columns: sequence(Schema
   sb:rollback(2)
   sb:write("\n)")
   local sql = sb:promote()
-  print(sql)
 
   return db_run(db, sql)
 end
 
 function Schema.drop_table(db: norm.Db, name: string)
   local sql = ('DROP TABLE IF EXISTS "%s";'):format(name)
-  print(sql)
   return db_run(db, sql)
 end
 
@@ -280,11 +278,11 @@ function Schema.create_index(db: norm.Db, name: string, cols: sequence(string), 
   if opts.if_not_exists then
     sb:write("IF NOT EXISTS ")
   end
-  sb:write(name)
+  sb:writef('"%s', name)
   for _, v in ipairs(cols) do
     sb:writef("_%s", v)
   end
-  sb:writef("_idx ON %s (", base.escape_identifier(name))
+  sb:writef("_idx\" ON %s (", base.escape_identifier(name))
   for i, v in ipairs(cols) do
     sb:write(base.escape_identifier(v))
     if not (i == #cols) then
@@ -296,7 +294,19 @@ function Schema.create_index(db: norm.Db, name: string, cols: sequence(string), 
     sb:write(" WHERE ", opts.where)
   end
   local final = sb:promote()
-  print(final)
+  return db_run(db, final)
+end
+
+function Schema.drop_index(db: norm.Db, name: string, cols: sequence(string))
+  local sb: stringbuilder
+  sb:write("DROP INDEX IF EXISTS \"")
+  sb:write(name)
+  for _, v in ipairs(cols) do
+    sb:writef("_%s", v)
+  end
+  sb:writef("_idx\"")
+
+  local final = sb:promote()
   return db_run(db, final)
 end
 
@@ -374,6 +384,10 @@ norm.migrate(db, {
     "3",
     function(db: norm.Db): string
       local err = schema.drop_table(db, "players")
+      if err ~= "" then
+        return err
+      end
+      local err = Schema.drop_index(db, "users", {"name", "age"})
       if err ~= "" then
         return err
       end
