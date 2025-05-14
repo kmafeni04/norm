@@ -347,14 +347,14 @@ function Schema.rename_table(db: norm.Db, old_tbl_name: string, new_tbl_name: st
 end
 
 local function db_create_migration_table(db: Db)
-  switch db.kind do
-    case norm.DbKind.sqlite then
-      if not sqlite.table_exists(db.sqlite_db, "norm_migrations") then
-        print("Creating migrations table")
+  if not db:table_exists("norm_migrations") then
+    print("Creating migrations table")
+    switch db.kind do
+      case norm.DbKind.sqlite then
         Schema.create_table(db, "norm_migrations", {
           {"migration", Schema.ColumnType.text, { primary_key = true }}
         })
-      end
+    end
   end
 end
 
