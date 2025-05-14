@@ -34,20 +34,6 @@ function M.run(db: *sqlite3, sql: string): string
   return ""
 end
 
--- TODO: Error could be anything so fix this implementation
-function M.table_exists(db: *sqlite3, table_name: string): boolean
-  local found_table = false
-
-  local function callback(userdata: pointer, col_count: cint, col_values: pointer(cstring), col_names: pointer(cstring)): cint
-    $(@*boolean)(userdata) = true
-    return 0 -- continue execution
-  end
-  local sql = ("SELECT name FROM sqlite_master WHERE type='table' AND name='%s';"):format(table_name)
-  local err_msg: cstring
-  local rc = sqlite3_exec(db, sql, &callback, &found_table, &err_msg)
-  return found_table
-end
-
 function M.begin_transaction(db: *sqlite3): string
   local err_msg: cstring
   local rc = sqlite3_exec(db, "BEGIN TRANSACTION;", nilptr, nilptr, &err_msg)
@@ -83,7 +69,7 @@ end
 
 function M.query(db: *sqlite3, sql: string, params: hashmap(string, string)): (sequence(hashmap(string, string)), string)
   local rows: sequence(hashmap(string, string))
-
+  print(sql)
   local stmt: *sqlite3_stmt
   local rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nilptr)
   if rc ~= SQLITE_OK then
@@ -136,7 +122,6 @@ function M.select(db: *sqlite3, sql: string, conditions: hashmap(string, string)
     sb:rollback(#(" AND "))
   end
   local final = "SELECT " .. sql .. sb:promote()
-  print(final)
   return M.query(db, final, conditions)
 end
 
@@ -155,7 +140,6 @@ function M.insert(db: *sqlite3, table_name: string, values: hashmap(string, stri
   sb:rollback(2)
   sb:write(")")
   local final = sb:promote()
-  print(final)
   local _, err = M.query(db, final, values)
   return err
 end
@@ -178,7 +162,6 @@ function M.update(db: *sqlite3, table_name: string, values: hashmap(string, stri
     sb:rollback(2)
   end
   local final = sb:promote()
-  print(final)
   local _, err = M.query(db, final, final_vals)
   return err
 end
@@ -191,9 +174,13 @@ function M.delete(db: *sqlite3, table_name: string, conditions: hashmap(string, 
   end
   sb:rollback(#(" AND "))
   local final = sb:promote()
-  print(final)
   local _, err = M.query(db, final, conditions)
   return err
 end
 
+function M.table_exists(db: *sqlite3, table_name: string): boolean
+  local sql = ("SELECT name FROM sqlite_master WHERE type='table' AND name='%s'"):format(table_name)
+  local rows, err = M.query(db, sql)
+  return #rows > 0
+end
 return M

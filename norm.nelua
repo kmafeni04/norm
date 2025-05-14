@@ -32,6 +32,14 @@ function Db:destroy()
   end
 end
 
+function Db:table_exists(name: string): boolean
+  switch self.kind do
+    case norm.DbKind.sqlite then
+      return sqlite.table_exists(self.sqlite_db, name)
+  end
+  return false
+end
+
 function Db:query(sql: string, params: hashmap(string, string)): (sequence(hashmap(string, string)), string)
   switch self.kind do
     case norm.DbKind.sqlite then
@@ -174,7 +182,6 @@ end
 local function db_get_migrated(db: Db): hashmap(string, boolean)
   local migrated: hashmap(string, boolean)
   local sql = "SELECT migration FROM \"norm_migrations\""
-  print(sql)
   local query_rows, query_err = db:query(sql)
   if query_err ~= "" then
     return migrated
@@ -238,7 +245,7 @@ function Schema.create_table(db: norm.Db, name: string, columns: sequence(Schema
     sb:write(('  "%s" %s,\n'):format(v.name, schema_type_tostring(v.type, v.opts)))
   end
   sb:rollback(2)
-  sb:write("\n);")
+  sb:write("\n)")
   local sql = sb:promote()
   print(sql)
 
@@ -247,6 +254,7 @@ end
 
 function Schema.drop_table(db: norm.Db, name: string)
   local sql = ('DROP TABLE IF EXISTS "%s";'):format(name)
+  print(sql)
   return db_run(db, sql)
 end
 
@@ -287,7 +295,7 @@ local schema = norm.Schema
 local type = schema.ColumnType
 norm.migrate(db, {
   {
-    "11",
+    "1",
     function(db: norm.Db): string
       local err = schema.create_table(db, "users", {
         {"id", type.integer, { primary_key = true }},
@@ -302,13 +310,24 @@ norm.migrate(db, {
     end
   },
   {
-    "21",
+    "2",
     function(db: norm.Db): string
       local err = schema.create_table(db, "players", {
         {"id", type.integer, { primary_key = true }},
         {"name", type.text, { unique = true }},
         {"age", type.integer}
       })
+      if err ~= "" then
+        return err
+      end
+
+      return ""
+    end
+  },
+  {
+    "3",
+    function(db: norm.Db): string
+      local err = schema.drop_table(db, "players")
       if err ~= "" then
         return err
       end
@@ -353,3 +372,5 @@ for i, cols in ipairs(rows) do
     print(k, v)
   end
 end
+
+print(db:table_exists("users"))
