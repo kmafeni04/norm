@@ -1,5 +1,6 @@
 require "io"
 
+local base = require ".utils.base"
 local sqlite = require ".utils.sqlite"
 
 local norm = @record{}
@@ -258,6 +259,47 @@ function Schema.drop_table(db: norm.Db, name: string)
   return db_run(db, sql)
 end
 
+function Schema.raw(db: norm.Db, sql: string)
+  return db_run(db, sql)
+end
+
+local Schema.IndexOpts = @record{
+  where: string,
+  unique: boolean,
+  if_not_exists: boolean
+}
+
+function Schema.create_index(db: norm.Db, name: string, cols: sequence(string), opts: Schema.IndexOpts)
+  local sb: stringbuilder
+  assert(#cols > 0)
+  if opts.unique then
+    sb:write("CREATE UNIQUE INDEX ")
+  else
+    sb:write("CREATE INDEX ")
+  end
+  if opts.if_not_exists then
+    sb:write("IF NOT EXISTS ")
+  end
+  sb:write(name)
+  for _, v in ipairs(cols) do
+    sb:writef("_%s", v)
+  end
+  sb:writef("_idx ON %s (", base.escape_identifier(name))
+  for i, v in ipairs(cols) do
+    sb:write(base.escape_identifier(v))
+    if not (i == #cols) then
+      sb:write(", ")
+    end
+  end
+  sb:write(")")
+  if opts.where ~= "" then
+    sb:write(" WHERE ", opts.where)
+  end
+  local final = sb:promote()
+  print(final)
+  return db_run(db, final)
+end
+
 local function db_create_migration_table(db: Db)
   switch db.kind do
     case norm.DbKind.sqlite then
@@ -317,6 +359,10 @@ norm.migrate(db, {
         {"name", type.text, { unique = true }},
         {"age", type.integer}
       })
+      if err ~= "" then
+        return err
+      end
+      local err = Schema.create_index(db, "users", {"name", "age"}, {unique = true})
       if err ~= "" then
         return err
       end

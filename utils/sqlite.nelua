@@ -1,4 +1,5 @@
 require "..libs.sqlite"
+local base = require ".base"
 
 local M = @record{}
 
@@ -67,6 +68,7 @@ function M.rollback(db: *sqlite3)
   return ""
 end
 
+-- NOTE: The k,v for each col need to be destroyed even if rows is not used
 function M.query(db: *sqlite3, sql: string, params: hashmap(string, string)): (sequence(hashmap(string, string)), string)
   local rows: sequence(hashmap(string, string))
   print(sql)
@@ -76,19 +78,19 @@ function M.query(db: *sqlite3, sql: string, params: hashmap(string, string)): (s
     return rows, string.format("Failed to prepare statement: %s", sqlite3_errmsg(db))
   end
 
+  defer sqlite3_finalize(stmt) end
+
   -- Bind named parameters
   for name, value in pairs(params) do
     -- Parameter name must include the `:` (e.g., ":username")
     local pname = ":" .. name
     local index = sqlite3_bind_parameter_index(stmt, pname)
     if index == 0 then
-      sqlite3_finalize(stmt)
       return rows, string.format("Parameter '%s' not found in SQL statement.", pname)
     end
 
     rc = sqlite3_bind_text(stmt, index, value, -1, nilptr)
     if rc ~= SQLITE_OK then
-      sqlite3_finalize(stmt)
       return rows, string.format("Failed to bind parameter '%s': %s", pname, sqlite3_errmsg(db))
     end
   end
@@ -108,7 +110,6 @@ function M.query(db: *sqlite3, sql: string, params: hashmap(string, string)): (s
     rows:push(cols)
   end
 
-  sqlite3_finalize(stmt)
   return rows, ""
 end
 
@@ -127,9 +128,9 @@ end
 
 function M.insert(db: *sqlite3, table_name: string, values: hashmap(string, string)): string
   local sb: stringbuilder
-  sb:write(('INSERT INTO "%s" ('): format(table_name))
+  sb:write(('INSERT INTO %s ('): format(base.escape_identifier(table_name)))
   for k in pairs(values) do
-    sb:write(('"%s", '):format(k))
+    sb:write(('%s, '):format(base.escape_identifier(k)))
   end
   sb:rollback(2)
   sb:write(")")
@@ -147,9 +148,9 @@ end
 function M.update(db: *sqlite3, table_name: string, values: hashmap(string, string), conditions: hashmap(string, string)): string
   local sb: stringbuilder
   local final_vals: hashmap(string, string)
-  sb:write(('UPDATE "%s" SET'):format(table_name))
+  sb:write(('UPDATE %s SET'):format(base.escape_identifier(table_name)))
   for k, v in pairs(values) do
-    sb:write(('"%s" = :val_%s, '):format(k, k))
+    sb:write(('%s = :val_%s, '):format(k, k))
     final_vals["val_".. k] = v
   end
   sb:rollback(2)
@@ -179,7 +180,7 @@ function M.delete(db: *sqlite3, table_name: string, conditions: hashmap(string, 
 end
 
 function M.table_exists(db: *sqlite3, table_name: string): boolean
-  local sql = ("SELECT name FROM sqlite_master WHERE type='table' AND name='%s'"):format(table_name)
+  local sql = ("SELECT \"name\" FROM sqlite_master WHERE type='table' AND name=%s"):format(base.escape_literal(table_name))
   local rows, err = M.query(db, sql)
   return #rows > 0
 end

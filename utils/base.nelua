@@ -1,0 +1,11 @@
+local M = @record{}
+
+function M.escape_identifier(s: string)
+  return '"' .. (s:gsub('"', '""')) .. '"'
+end
+
+function M.escape_literal(s: string)
+ return "'" .. (s:gsub("'", "''")) .. "'"
+end
+
+return M
