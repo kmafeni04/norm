@@ -321,6 +321,14 @@ function Schema.add_column(db: norm.Db, tbl_name: string, col: Schema.Column)
   return db_run(db, sql)
 end
 
+function Schema.drop_column(db: norm.Db, tbl_name: string, col_name: string)
+  local sql = ("ALTER TABLE %s DROP COLUMN %s"):format(
+    base.escape_identifier(tbl_name),
+    base.escape_identifier(col_name)    
+  )
+  return db_run(db, sql)
+end
+
 local function db_create_migration_table(db: Db)
   switch db.kind do
     case norm.DbKind.sqlite then
@@ -403,6 +411,10 @@ local err = norm.migrate(db, {
         return err
       end
       local err = Schema.add_column(db, "users", {"height", type.integer})
+      if err ~= "" then
+        return err
+      end
+      local err = Schema.drop_column(db, "users", "height")
       if err ~= "" then
         return err
       end
