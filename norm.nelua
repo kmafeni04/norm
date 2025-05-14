@@ -182,12 +182,17 @@ local function db_get_migrated(db: Db): hashmap(string, boolean)
   for _, col in ipairs(query_rows) do
     migrated[col["migration"]] = true
   end
+  for _, col in ipairs(query_rows) do
+    for k in pairs(col) do
+      k:destroy()
+    end
+  end
   return migrated
 end
 
 local function db_migrate(db: Db, migrated: hashmap(string, boolean), migrations: sequence(Schema.Migration)): (uinteger, string)
   local ran_migrations: uinteger
-  for _, v in pairs(migrations) do
+  for _, v in ipairs(migrations) do
     if not migrated:has(v.name) then
       print("Migrating: " .. v.name)
       switch db.kind do
@@ -195,6 +200,9 @@ local function db_migrate(db: Db, migrated: hashmap(string, boolean), migrations
           local vals: hashmap(string, string)
           vals["migration"] = v.name
           sqlite.insert(db.sqlite_db, "norm_migrations", vals)
+          for k in pairs(migrated) do
+            k:destroy()
+          end
       end
       local create_err = v.fn(db)
       if create_err ~= "" then
