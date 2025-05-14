@@ -156,12 +156,6 @@ local function schema_type_tostring(st: Schema.ColumnType, opts: Schema.ColumnOp
   return sb:promote()
 end
 
-local Schema.Column = @record{
-  name: string,
-  type: Schema.ColumnType,
-  opts: Schema.ColumnOptions
-}
-
 local function db_run(db: Db, sql: string): string
   switch db.kind do
     case norm.DbKind.sqlite then
@@ -222,7 +216,7 @@ local function db_migrate(db: Db, migrated: hashmap(string, boolean), migrations
   return ran_migrations, ""
 end
 
-local function db_commit_or_rollback(db: Db, err: string, ran_migrations: uinteger)
+local function db_commit_or_rollback(db: Db, err: string, ran_migrations: uinteger): string
   switch db.kind do
     case norm.DbKind.sqlite then
       if err ~= "" then
@@ -234,7 +228,18 @@ local function db_commit_or_rollback(db: Db, err: string, ran_migrations: uinteg
         print(("Ran %d migrations"):format(ran_migrations))
       end
   end
+  return err
 end
+
+function Schema.raw(db: norm.Db, sql: string)
+  return db_run(db, sql)
+end
+
+local Schema.Column = @record{
+  name: string,
+  type: Schema.ColumnType,
+  opts: Schema.ColumnOptions
+}
 
 function Schema.create_table(db: norm.Db, name: string, columns: sequence(Schema.Column)): string
   assert(name ~= "", "table name cannot be an empty string")
@@ -243,7 +248,7 @@ function Schema.create_table(db: norm.Db, name: string, columns: sequence(Schema
   sb:write("CREATE TABLE IF NOT EXISTS \"" .. name .. "\" (\n")
   for i, v in ipairs(columns) do
     assert(v.name ~= "", "column name cannot be an empty string")
-    sb:write(('  "%s" %s,\n'):format(v.name, schema_type_tostring(v.type, v.opts)))
+    sb:writef("  %s %s,\n", base.escape_identifier(v.name), schema_type_tostring(v.type, v.opts))
   end
   sb:rollback(2)
   sb:write("\n)")
@@ -254,10 +259,6 @@ end
 
 function Schema.drop_table(db: norm.Db, name: string)
   local sql = ('DROP TABLE IF EXISTS "%s";'):format(name)
-  return db_run(db, sql)
-end
-
-function Schema.raw(db: norm.Db, sql: string)
   return db_run(db, sql)
 end
 
@@ -310,6 +311,16 @@ function Schema.drop_index(db: norm.Db, name: string, cols: sequence(string))
   return db_run(db, final)
 end
 
+function Schema.add_column(db: norm.Db, tbl_name: string, col: Schema.Column)
+  assert(col.name ~= "", "column name cannot be an empty string")
+  local sql = ("ALTER TABLE %s ADD COLUMN %s %s"):format(
+    base.escape_identifier(tbl_name),
+    base.escape_identifier(col.name),
+    schema_type_tostring(col.type, col.opts)
+  )
+  return db_run(db, sql)
+end
+
 local function db_create_migration_table(db: Db)
   switch db.kind do
     case norm.DbKind.sqlite then
@@ -330,7 +341,7 @@ function norm.migrate(db: norm.Db, migrations: sequence(Schema.Migration))
   local err = db_start_transaction(db)
   local migrated = db_get_migrated(db)
   local ran_migrations, err = db_migrate(db, migrated, migrations)
-  db_commit_or_rollback(db, err, ran_migrations)
+  return db_commit_or_rollback(db, err, ran_migrations)
 end
 
 local db, err = norm.new({
@@ -345,7 +356,7 @@ assert(err == "", err)
 local migrations: hashmap(string, norm.Schema.Migration)
 local schema = norm.Schema
 local type = schema.ColumnType
-norm.migrate(db, {
+local err = norm.migrate(db, {
   {
     "1",
     function(db: norm.Db): string
@@ -391,11 +402,16 @@ norm.migrate(db, {
       if err ~= "" then
         return err
       end
+      local err = Schema.add_column(db, "users", {"height", type.integer})
+      if err ~= "" then
+        return err
+      end
 
       return ""
     end
   }
 })
+assert(err == "", err)
 
 local users_insert: hashmap(string, string)
 users_insert["name"] = "James"
