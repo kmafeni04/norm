@@ -329,6 +329,23 @@ function Schema.drop_column(db: norm.Db, tbl_name: string, col_name: string)
   return db_run(db, sql)
 end
 
+function Schema.rename_column(db: norm.Db, tbl_name: string, old_col_name: string, new_col_name: string)
+  local sql = ("ALTER TABLE %s RENAME COLUMN %s to %s"):format(
+    base.escape_identifier(tbl_name),
+    base.escape_identifier(old_col_name),    
+    base.escape_identifier(new_col_name)    
+  )
+  return db_run(db, sql)
+end
+
+function Schema.rename_table(db: norm.Db, old_tbl_name: string, new_tbl_name: string)
+  local sql = ("ALTER TABLE %s RENAME to %s"):format(
+    base.escape_identifier(old_tbl_name),
+    base.escape_identifier(new_tbl_name)    
+  )
+  return db_run(db, sql)
+end
+
 local function db_create_migration_table(db: Db)
   switch db.kind do
     case norm.DbKind.sqlite then
@@ -402,10 +419,6 @@ local err = norm.migrate(db, {
   {
     "3",
     function(db: norm.Db): string
-      local err = schema.drop_table(db, "players")
-      if err ~= "" then
-        return err
-      end
       local err = Schema.drop_index(db, "users", {"name", "age"})
       if err ~= "" then
         return err
@@ -414,7 +427,19 @@ local err = norm.migrate(db, {
       if err ~= "" then
         return err
       end
-      local err = Schema.drop_column(db, "users", "height")
+      local err = Schema.rename_column(db, "users", "height", "length")
+      if err ~= "" then
+        return err
+      end
+      local err = Schema.drop_column(db, "users", "length")
+      if err ~= "" then
+        return err
+      end
+      local err = Schema.rename_table(db, "players", "sportsmen")
+      if err ~= "" then
+        return err
+      end
+      local err = schema.drop_table(db, "sportsmen")
       if err ~= "" then
         return err
       end
