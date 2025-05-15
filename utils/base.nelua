@@ -8,4 +8,15 @@ function M.escape_literal(s: string)
  return "'" .. (s:gsub("'", "''")) .. "'"
 end
 
+function M.destroy_rows(rows: sequence(hashmap(string, string)))
+  for _, col in ipairs(rows) do
+    for k, v in pairs(col) do
+      k:destroy()
+      v:destroy()
+    end
+    col:destroy()
+  end
+  rows:destroy()
+end
+
 return M

@@ -69,7 +69,6 @@ function M.rollback(db: *sqlite3)
   return ""
 end
 
--- NOTE: The k,v for each col need to be destroyed even if rows is not used
 function M.query(db: *sqlite3, sql: string, params: hashmap(string, string)): (sequence(hashmap(string, string)), string)
   local rows: sequence(hashmap(string, string))
   print(sql)
@@ -142,7 +141,8 @@ function M.insert(db: *sqlite3, table_name: string, values: hashmap(string, stri
   sb:rollback(2)
   sb:write(")")
   local final = sb:promote()
-  local _, err = M.query(db, final, values)
+  local rows, err = M.query(db, final, values)
+  base.destroy_rows(rows)
   return err
 end
 
@@ -164,7 +164,8 @@ function M.update(db: *sqlite3, table_name: string, values: hashmap(string, stri
     sb:rollback(2)
   end
   local final = sb:promote()
-  local _, err = M.query(db, final, final_vals)
+  local rows, err = M.query(db, final, final_vals)
+  base.destroy_rows(rows)
   return err
 end
 
@@ -176,13 +177,16 @@ function M.delete(db: *sqlite3, table_name: string, conditions: hashmap(string, 
   end
   sb:rollback(#(" AND "))
   local final = sb:promote()
-  local _, err = M.query(db, final, conditions)
+  local rows, err = M.query(db, final, conditions)
+  base.destroy_rows(rows)
   return err
 end
 
 function M.table_exists(db: *sqlite3, table_name: string): boolean
   local sql = ("SELECT \"name\" FROM sqlite_master WHERE type='table' AND name=%s"):format(base.escape_literal(table_name))
   local rows, err = M.query(db, sql)
-  return #rows > 0
+  local result = #rows > 0
+  base.destroy_rows(rows)
+  return result
 end
 return M

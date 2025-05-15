@@ -5,10 +5,12 @@ local sqlite = require ".utils.sqlite"
 
 local norm = @record{}
 
+local norm.destroy_rows = base.destroy_rows
+
 local norm.DbKind = @enum{
   not_set = 0,
   sqlite,
-  pg,
+  postgres,
   mysql
 }
 
@@ -182,18 +184,18 @@ local function db_get_migrated(db: Db): hashmap(string, boolean)
     return migrated
   end
   for _, col in ipairs(query_rows) do
-    migrated[col["migration"]] = true
+    migrated[string.copy(col["migration"])] = true
   end
-  for _, col in ipairs(query_rows) do
-    for k in pairs(col) do
-      k:destroy()
-    end
-  end
+  base.destroy_rows(query_rows)
   return migrated
 end
 
 local function db_migrate(db: Db, migrated: hashmap(string, boolean), migrations: sequence(Schema.Migration)): (uinteger, string)
   local ran_migrations: uinteger
+  defer
+    migrated:destroy()
+    migrations:destroy()
+  end
   for _, v in ipairs(migrations) do
     if not migrated:has(v.name) then
       print("Migrating: " .. v.name)
@@ -461,6 +463,7 @@ users_select["name"] = "James"
 users_select["age"] = "21"
 local rows, err = db:select("* FROM users", users_select)
 assert(err == "", err)
+norm.destroy_rows(rows)
 
 for i, cols in ipairs(rows) do
   for k, v in pairs(cols) do
@@ -485,5 +488,6 @@ for i, cols in ipairs(rows) do
     print(k, v)
   end
 end
+norm.destroy_rows(rows)
 
 print(db:table_exists("users"))
