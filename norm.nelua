@@ -59,20 +59,29 @@ function Db:select(sql: string, conditions: hashmap(string, string)): (sequence(
   return {}, "UNREACHABLE"
 end
 
-function Db:insert(table_name: string, values: hashmap(string, string)): string
+function Db:insert(
+    table_name: string,
+    values: hashmap(string, string),
+    returning: facultative(string)
+  ): (sequence(hashmap(string, string)), string)
   switch self.kind do
     case norm.DbKind.sqlite then
-    return sqlite.insert(self.sqlite_db, table_name, values)
+    return sqlite.insert(self.sqlite_db, table_name, values, returning)
   end
-  return "UNREACHABLE"
+  return {}, "UNREACHABLE"
 end
 
-function Db:update(table_name: string, conditions: hashmap(string, string)): string
+function Db:update(
+    table_name: string,
+    values: hashmap(string, string),
+    conditions: hashmap(string, string),
+    returning: facultative(string)
+  ): (sequence(hashmap(string, string)), string)
   switch self.kind do
     case norm.DbKind.sqlite then
-    return sqlite.update(self.sqlite_db, table_name, conditions)
+    return sqlite.update(self.sqlite_db, table_name, values, conditions, returning)
   end
-  return "UNREACHABLE"
+  return {}, "UNREACHABLE"
 end
 
 
@@ -370,5 +379,118 @@ function norm.migrate(db: norm.Db, migrations: sequence(Schema.Migration))
   local ran_migrations, err = db_migrate(db, migrated, migrations)
   return db_commit_or_rollback(db, err, ran_migrations)
 end
+
+local Model = @record{
+  db: Db,
+  name: string,
+}
+
+local ModelInst = @record{
+  db: Db,
+  tbl_name: string,
+  row: hashmap(string, string)
+}
+
+function Model.new(db: Db, name: string): (Model, string)
+  if not db:table_exists(name) then
+    return {}, ("Table `%s` does not exist in the database"):format(name)
+  end
+  return {
+    db = db,
+    name = name
+  }, ""
+end
+
+function Model:find(conditions: hashmap(string, string)): (ModelInst, string)
+  local sql = "* FROM " .. self.name
+  local row: hashmap(string, string)
+  switch self.db.kind do
+    case norm.DbKind.sqlite then
+      local rows, err = sqlite.find(self.db.sqlite_db, sql, conditions)
+      if err ~= "" then
+        return {}, err
+      end
+      row = rows[1]
+  end
+  return {
+    db = self.db,
+    tbl_name = self.name,
+    row = row
+  }, ""
+end
+
+function Model:select(conditions: hashmap(string, string)): (sequence(ModelInst), string)
+  local sql = "* FROM " .. self.name
+  local result: sequence(ModelInst)
+  switch self.db.kind do
+    case norm.DbKind.sqlite then
+      local rows, err = sqlite.select(self.db.sqlite_db, sql, conditions)
+      if err ~= "" then
+        return {}, err
+      end
+      if #rows < 1 then
+        return {}, "No rows were found with the query"
+      end
+      for _, row in ipairs(rows) do
+        result:push({      
+          db = self.db,
+          tbl_name = self.name,
+          row = row
+        })
+      end
+  end
+  return result, ""
+end
+
+function Model:create(values: hashmap(string, string), returning: facultative(string)): (ModelInst, string)
+  ## if not returning.type.is_string then
+    local returning = "*"
+  ## end
+  local rows, err = self.db:insert(self.name, values, returning)
+  if err ~= "" then
+    return {}, err
+  end
+  if #rows < 1 then
+    return {}, "No rows were found with the query"
+  end
+  return {      
+    db = self.db,
+    tbl_name = self.name,
+    row = rows[1]
+  }, ""
+end
+
+function ModelInst:update(values: hashmap(string, string), returning: facultative(string)): (ModelInst, string)
+  ## if not returning.type.is_string then
+    local returning = "*"
+  ## end
+  local rows, err = self.db:update(self.tbl_name, values, self.row, returning)
+  if err ~= "" then
+    return {}, err
+  end
+  if #rows < 1 then
+    return {}, "No rows were found with the query"
+  end
+  return {      
+    db = self.db,
+    tbl_name = self.tbl_name,
+    row = rows[1]
+  }, ""
+end
+
+function ModelInst:delete(): string
+  return self.db:delete(self.tbl_name, self.row)
+end
+
+function ModelInst:get_col(name: string): (string, string)
+  local ok, v = self.row:has_and_get(name)
+  if ok then
+    return v, ""
+  end
+  return "", "name does not exist in row"
+end
+
+local norm.Model = Model
+local norm.ModelInst = ModelInst
 
 return norm

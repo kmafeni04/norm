@@ -118,7 +118,7 @@ function M.select(db: *sqlite3, sql: string, conditions: hashmap(string, string)
   if next(conditions) then
     sb:write(" WHERE ")
     for k, v in pairs(conditions) do
-      sb:write(('"%s" = :%s AND '):format(k, k))
+      sb:writef("%s = :%s AND ", base.escape_identifier(k), k)
     end
     sb:rollback(#(" AND "))
   end
@@ -126,54 +126,89 @@ function M.select(db: *sqlite3, sql: string, conditions: hashmap(string, string)
   return M.query(db, final, conditions)
 end
 
-function M.insert(db: *sqlite3, table_name: string, values: hashmap(string, string)): string
+function M.find(db: *sqlite3, sql: string, conditions: hashmap(string, string)): (sequence(hashmap(string, string)), string)
   local sb: stringbuilder
-  sb:write(('INSERT INTO %s ('): format(base.escape_identifier(table_name)))
+  if next(conditions) then
+    sb:write(" WHERE ")
+    for k, v in pairs(conditions) do
+      sb:writef("%s = :%s AND ", base.escape_identifier(k), k)
+    end
+    sb:rollback(#(" AND "))
+  end
+  sb:write(" LIMIT 1")
+  local final = "SELECT " .. sql .. sb:promote()
+  return M.query(db, final, conditions)
+end
+
+function M.insert(
+    db: *sqlite3,
+    table_name: string,
+    values: hashmap(string, string),
+    returning: facultative(string)
+  ): (sequence(hashmap(string, string)), string)
+  local sb: stringbuilder
+  sb:writef("INSERT INTO %s (", base.escape_identifier(table_name))
   for k in pairs(values) do
-    sb:write(('%s, '):format(base.escape_identifier(k)))
+    sb:writef("%s, ", base.escape_identifier(k))
   end
   sb:rollback(2)
   sb:write(")")
   sb:write(" VALUES (")
   for k in pairs(values) do
-    sb:write((':%s, '):format(k))
+    sb:writef(":%s, ", k)
   end
   sb:rollback(2)
   sb:write(")")
+  ## if returning.type.is_string then
+    if returning == "*" then
+      sb:writef(" RETURNING %s", returning)
+    else
+      sb:writef(" RETURNING %s", base.escape_identifier(returning))
+    end
+  ## end
   local final = sb:promote()
-  local rows, err = M.query(db, final, values)
-  base.destroy_rows(rows)
-  return err
+  return M.query(db, final, values)
 end
 
-function M.update(db: *sqlite3, table_name: string, values: hashmap(string, string), conditions: hashmap(string, string)): string
+function M.update(
+    db: *sqlite3,
+    table_name: string,
+    values: hashmap(string, string),
+    conditions: hashmap(string, string),
+    returning: facultative(string)
+  ): (sequence(hashmap(string, string)), string)
   local sb: stringbuilder
   local final_vals: hashmap(string, string)
-  sb:write(('UPDATE %s SET'):format(base.escape_identifier(table_name)))
+  sb:writef("UPDATE %s SET ", base.escape_identifier(table_name))
   for k, v in pairs(values) do
-    sb:write(('%s = :val_%s, '):format(k, k))
+    sb:writef("%s = :val_%s, ", k, k)
     final_vals["val_".. k] = v
   end
   sb:rollback(2)
   if next(conditions) then
     sb:write(" WHERE ")
     for k, v in pairs(conditions) do
-      sb:write(('"%s" = :cond_%s, '):format(k, k))
+      sb:writef("%s = :cond_%s AND ", base.escape_identifier(k), k)
       final_vals["cond_".. k] = v
     end
-    sb:rollback(2)
+    sb:rollback(#(" AND "))
   end
+  ## if returning.type.is_string then
+    if returning == "*" then
+      sb:writef(" RETURNING %s", returning)
+    else
+      sb:writef(" RETURNING %s", base.escape_identifier(returning))
+    end
+  ## end
   local final = sb:promote()
-  local rows, err = M.query(db, final, final_vals)
-  base.destroy_rows(rows)
-  return err
+  return M.query(db, final, final_vals)
 end
 
 function M.delete(db: *sqlite3, table_name: string, conditions: hashmap(string, string)): string
   local sb: stringbuilder
-  sb:write(('DELETE FROM "%s" WHERE '):format(table_name))
+  sb:writef("DELETE FROM %s WHERE ", base.escape_identifier(table_name))
   for k, v in pairs(conditions) do
-    sb:write(('"%s" = :%s AND '):format(k, k))
+    sb:writef("%s = :%s AND ", base.escape_identifier(k), k)
   end
   sb:rollback(#(" AND "))
   local final = sb:promote()

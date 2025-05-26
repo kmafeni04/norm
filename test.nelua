@@ -1,3 +1,5 @@
+require "os"
+
 local norm = require "norm"
 
 local db, err = norm.new({
@@ -84,7 +86,7 @@ assert(err == "", err)
 local users_insert: hashmap(string, string)
 users_insert["name"] = "James"
 users_insert["age"] = "21"
-local err = db:insert("users", users_insert)
+local rows, err = db:insert("users", users_insert)
 assert(err == "", err)
 
 local users_select: hashmap(string, string)
@@ -92,13 +94,6 @@ users_select["name"] = "James"
 users_select["age"] = "21"
 local rows, err = db:select("* FROM users", users_select)
 assert(err == "", err)
-
-for i, cols in ipairs(rows) do
-  for k, v in pairs(cols) do
-    print(k, v)
-  end
-end
-norm.destroy_rows(rows)
 
 local users_delete: hashmap(string, string)
 users_delete["name"] = "James"
@@ -112,11 +107,22 @@ users_select["age"] = "21"
 local rows, err = db:select("* FROM users", users_select)
 assert(err == "", err)
 
-for i, cols in ipairs(rows) do
-  for k, v in pairs(cols) do
-    print(k, v)
-  end
-end
-norm.destroy_rows(rows)
+local model = norm.Model
+local Users, err = model.new(db, "users")
+assert(err == "", err)
 
-print(db:table_exists("users"))
+local users_create: hashmap(string, string)
+users_create["name"] = "James"
+users_create["age"] = "21"
+local user, err = Users:create(users_create)
+assert(err == "", err)
+
+local users_update: hashmap(string, string)
+users_update["name"] = "John"
+local user, err = user:update(users_update)
+assert(err == "", err)
+
+local err = user:delete()
+assert(err == "", err)
+
+os.remove("hello.db")
