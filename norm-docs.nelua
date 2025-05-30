@@ -1,0 +1,29 @@
+local ssdg = require "ssdg"
+
+local gen = ssdg.new({
+  lang = "lua",
+  single_line = "--",
+  multi_line = {
+    starting = "--[[",
+    ending = "]]"
+  }
+})
+
+gen:add([[
+# norm
+
+A database ORM for the [nelua](https://www.nelua.io) programming language
+
+]])
+
+gen:add_file("./norm.nelua")
+
+gen:add_file("./utils/base.nelua")
+
+gen:add([[
+---
+
+## Acknowledgements
+]])
+
+gen:write_file("./README.md")

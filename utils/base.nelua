@@ -1,14 +1,31 @@
-local M = @record{}
+--[[-
+## base.nelua
 
-function M.escape_identifier(s: string)
+This file provides some utility functions used by the library
+-]]
+local base = @record{}
+
+--- ### base.escape_identifier
+--- Escapes a string `s` so it can be used as an identifier in sql queries
+---`
+function base.escape_identifier(s: string)
+---`
   return '"' .. (s:gsub('"', '""')) .. '"'
 end
 
-function M.escape_literal(s: string)
+--- ### base.escape_literal
+--- Escapes a string `s` so it can be used as a literal in sql queries
+---`
+function base.escape_literal(s: string)
+---`
  return "'" .. (s:gsub("'", "''")) .. "'"
 end
 
-function M.destroy_rows(rows: sequence(hashmap(string, string)))
+--- ### base.destroy_rows
+--- Cleans up memory for rows returned from running sql queries
+---`
+function base.destroy_rows(rows: sequence(hashmap(string, string)))
+---`
   for _, col in ipairs(rows) do
     for k, v in pairs(col) do
       k:destroy()
@@ -19,4 +36,4 @@ function M.destroy_rows(rows: sequence(hashmap(string, string)))
   rows:destroy()
 end
 
-return M
+return base
