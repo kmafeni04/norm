@@ -1,0 +1,85 @@
+require "..libs.libpq-fe"
+local M = @record{}
+
+local M.type: type = PGconn
+
+function M.new(conn_info: string): (*PGconn, string)
+  local function notice_proc(arg: pointer, message: cstring): void
+    -- Silence notice messages
+  end
+  local conn = PQconnectdb(conn_info)
+  if PQstatus(conn) ~= CONNECTION_OK then
+    local err = ("Error while connecting to the database server: %s"):format(PQerrorMessage(conn))
+    PQfinish(conn)
+    return conn, err
+  end
+  PQsetNoticeProcessor(conn, notice_proc, nilptr)
+  return conn, ""
+end
+
+function M.destroy(db: *PGconn)
+  PQfinish(db)
+end
+
+function M.begin_transaction(db: *PGconn): string
+  local res: *PGresult = PQexec(db, "BEGIN;")
+  defer PQclear(res) end
+  if PQresultStatus(res) ~= PGRES_COMMAND_OK then
+    local errmsg = string.copy(PQresultErrorMessage(res))
+    return errmsg
+  end
+  return ""
+end
+
+function M.commit(db: *PGconn): string
+  local err_msg: cstring
+  local res: *PGresult = PQexec(db, "COMMIT;")
+  defer PQclear(res) end
+  if PQresultStatus(res) ~= PGRES_COMMAND_OK then
+    local errmsg = string.copy(PQresultErrorMessage(res))
+    return errmsg
+  end
+  return ""
+end
+
+function M.rollback(db: *PGconn): string
+  local err_msg: cstring
+  local res: *PGresult = PQexec(db, "ROLLBACK;")
+  defer PQclear(res) end
+  if PQresultStatus(res) ~= PGRES_COMMAND_OK then
+    local errmsg = string.copy(PQresultErrorMessage(res))
+    return errmsg
+  end
+  return ""
+end
+
+function M.query(db: *PGconn, sql: string): (sequence(hashmap(string, string)), string)
+  local rows: sequence(hashmap(string, string))
+  print(sql)
+
+  local res: *PGresult = PQexec(db, sql)
+  if PQresultStatus(res) ~= PGRES_TUPLES_OK then
+    local errmsg = string.copy(PQresultErrorMessage(res))
+    PQclear(res)
+    return rows, errmsg
+  end
+
+  defer PQclear(res) end
+
+  local nrows = PQntuples(res)
+  local ncols = PQnfields(res)
+
+  for row = 0, <nrows do
+    local rowmap: hashmap(string, string)
+    for col = 0, <ncols do
+      local colname = string.copy(PQfname(res, col))
+      local value = string.copy(PQgetvalue(res, row, col))
+      rowmap[colname] = value
+    end
+    rows:push(rowmap)
+  end
+
+  return rows, ""
+end
+
+return M

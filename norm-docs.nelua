@@ -6,7 +6,7 @@ local gen = ssdg.new({
   multi_line = {
     starting = "--[[",
     ending = "]]"
-  }
+  },
 })
 
 gen:add([[

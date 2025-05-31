@@ -125,6 +125,7 @@ function ssdg:add_file(path: string, opts: FileOptions)
   local li = 0
   while li <= #lines do
     if lines[li]:match(escape_special(conf.single_line .. conf.lead .. conf.ignore_block.starting)) then
+      local block_end_match_str = escape_special(conf.single_line .. conf.lead .. conf.ignore_block.ending)
       local block_start_match = lines[li]:match(escape_special(conf.single_line .. conf.lead .. conf.ignore_block.starting) .. "%s*$")
       assert(block_start_match, ("%s:%d: Syntax error: Nothing should come after the ignore block start"):format(path, li))
       li = li + 1
@@ -132,8 +133,13 @@ function ssdg:add_file(path: string, opts: FileOptions)
       repeat
         li = li + 1
         assert(li <= #lines, ("%s:%d:%d: error: No closing found for ignore block"):format(path, start_mark, #lines[start_mark]))
-      until lines[li]:match(escape_special(conf.single_line .. conf.lead .. conf.ignore_block.ending) .. "%s*$")
+      until lines[li]:match(block_end_match_str)
+      assert(
+        lines[li]:match("^" .. block_end_match_str .. "%s*$"),
+        ("%s:%d: error: ignore block end must not contain any extra characters"):format(path, li)
+      )
     elseif lines[li]:match(escape_special(conf.single_line .. conf.lead .. conf.code_block.starting)) then
+      local block_end_match_str = escape_special(conf.single_line .. conf.lead .. conf.code_block.ending)
       local block_start_match = lines[li]:match(escape_special(conf.single_line .. conf.lead .. conf.code_block.starting) .. "%s*$")
       assert(block_start_match, ("%s:%d: Syntax error: Nothing should come after the code block start\n"):format(path, li))
       self.buf:writef("```%s\n", conf.lang)
@@ -144,7 +150,11 @@ function ssdg:add_file(path: string, opts: FileOptions)
         self.buf:write(lines[li])
         li = li + 1
         assert(li <= #lines, ("%s:%d:%d: error: No closing found for code block"):format(path, start_mark, #lines[start_mark]))
-      until lines[li]:match(escape_special(conf.single_line .. conf.lead .. conf.code_block.ending) .. "%s*$")
+      until lines[li]:match(block_end_match_str)
+      assert(
+        lines[li]:match("^" .. block_end_match_str .. "%s*$"),
+        ("%s:%d: error: code block end must not contain any extra characters"):format(path, li)
+      )
       self.buf:write("```\n\n")
     elseif lines[li]:match(escape_special(conf.single_line .. conf.lead)) then
       lines[li] = lines[li]:gsub(sub_str, opts.subs)
@@ -157,7 +167,7 @@ function ssdg:add_file(path: string, opts: FileOptions)
       local block_start_match, block_start_seq = lines[li]:match(escape_special(conf.multi_line.starting .. conf.lead) .. "(.*)$")
       if block_start_match then
         local block = block_start_seq[1]
-        local block_end_match_str = escape_special(conf.lead .. conf.multi_line.ending) .. "%s*$"
+        local block_end_match_str = escape_special(conf.lead .. conf.multi_line.ending)
         local block_match, block_seq = block:match("(.*)" .. block_end_match_str)
         if block_match then
           block = trim_wspace(block_seq[1])
@@ -172,6 +182,10 @@ function ssdg:add_file(path: string, opts: FileOptions)
           block = block .. (lines[li])
           assert(li <= #lines, ("%s:%d:%d: error: No closing found for multi line block"):format(path, start_mark, #lines[start_mark]))
         until lines[li]:match(block_end_match_str)
+        assert(
+          lines[li]:match("^" .. block_end_match_str .. "%s*$"),
+          ("%s:%d: error: multi_line block end must not contain any extra characters"):format(path, li)
+        )
         local block_match, block_seq = block:match("(.*)" .. block_end_match_str)
         if block_match then
           block = trim_wspace(block_seq[1])

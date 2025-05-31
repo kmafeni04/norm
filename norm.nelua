@@ -3,6 +3,7 @@ require "io"
 
 local base = require ".utils.base"
 local sqlite = require ".utils.sqlite"
+local pg = require ".utils.pg"
 
 --- ### norm
 --- The norm module
@@ -16,13 +17,25 @@ local norm = @record{}
 local norm.destroy_rows = base.destroy_rows
 ---`
 
+--- ### norm.escape_identifier
+--- See [base.nelua](#basenelua)
+---`
+local norm.escape_identifier = base.escape_identifier
+---`
+
+--- ### norm.escape_literal
+--- See [base.nelua](#basenelua)
+---`
+local norm.escape_literal = base.escape_literal
+---`
+
 --- ### norm.DbKind
 --- Enum used to specify what database is connected in the [norm.Db](#normdb) module
 ---`
 local norm.DbKind = @enum{
   not_set = 0,
   sqlite,
-  postgres,
+  pg,
   mysql
 }
 ---`
@@ -32,11 +45,19 @@ local norm.DbKind = @enum{
 ---`
 local norm.Config = @record{
   kind: norm.DbKind,
-  sqlite: record{
-    name: string
-  },
-  postgress: record{},
-  mysql: record{}
+  conn: union{
+    sqlite: record{
+      name: string
+    },
+    pg: record{
+      name: string,
+      user: string,
+      password: string,
+      host: string,
+      port: string
+    },
+    mysql: record{}
+  }
 }
 ---`
 
@@ -45,9 +66,41 @@ local norm.Config = @record{
 ---`
 local norm.Db = @record{
   kind: norm.DbKind,
-  sqlite_db: *sqlite.type
+  conn: union{
+    sqlite_db: *sqlite.type,
+    pg_db: *pg.type
+  }
 }
 ---`
+
+--- ### norm.Db.new
+--[[-
+This function returns a new [norm.Db](#normdb) object and an error string
+If no error occurs, an empty string is returned 
+-]]
+---`
+function norm.Db.new(conf: norm.Config): (norm.Db, string)
+---`
+  switch conf.kind do
+    case norm.DbKind.not_set then      
+      return {}, "DB object not initialised"
+    case norm.DbKind.sqlite then
+      local sqlite_db, err = sqlite.new(conf.conn.sqlite.name)
+      if err ~= "" then return {}, err end
+      return {kind = conf.kind, conn = {sqlite_db = sqlite_db}}, ""
+    case norm.DbKind.pg then
+      local info = conf.conn.pg
+      info.user = info.user ~= "" and info.user or "postgres"
+      info.host = info.host ~= "" and info.host or "127.0.0.1"
+      info.port = info.port ~= "" and info.port or "5432"
+      local conn_info = ("dbname=%s user=%s password=%s host=%s port=%s"):format(info.name, info.user, info.password, info.host, info.port)
+      local pg_db, err = pg.new(conn_info)
+      if err ~= "" then return {}, err end
+      return {kind = conf.kind, conn= {pg_db = pg_db}}, ""
+  end
+  return {}, "UNREACHABLE"
+end
+
 
 --- ### norm.Db:destroy
 --- This function cleans up the memory used by the Db object
@@ -56,7 +109,9 @@ function norm.Db:destroy()
 ---`
   switch self.kind do
     case norm.DbKind.sqlite then
-      sqlite.destroy(self.sqlite_db)
+      sqlite.destroy(self.conn.sqlite_db)
+    case norm.DbKind.pg then
+      pg.destroy(self.conn.pg_db)
   end
 end
 
@@ -71,7 +126,9 @@ function norm.Db:query(sql: string): (sequence(hashmap(string, string)), string)
 ---`
   switch self.kind do
     case norm.DbKind.sqlite then
-    return sqlite.query(self.sqlite_db, sql)
+      return sqlite.query(self.conn.sqlite_db, sql)
+    case norm.DbKind.pg then
+      return pg.query(self.conn.pg_db, sql)
   end
   return {}, "UNREACHABLE"
 end
@@ -84,11 +141,15 @@ function norm.Db:table_exists(name: string): boolean
   local sql: string
   switch self.kind do
     case norm.DbKind.sqlite then
-      sql = ("SELECT \"name\" FROM sqlite_master WHERE type='table' AND name=%s"):format(base.escape_literal(name))
+      sql = ("SELECT \"name\" FROM sqlite_master WHERE type='table' AND name=%s"):format(norm.escape_literal(name))
+    case norm.DbKind.pg then
+      sql = ("SELECT tablename FROM pg_catalog.pg_tables WHERE tablename = %s"):format(norm.escape_literal(name))
+    else
+      error("UNIMPLEMENTED")
   end
   local rows, err = self:query(sql)
   local res = #rows > 0
-  base.destroy_rows(rows)
+  norm.destroy_rows(rows)
   return res
 end
 
@@ -104,7 +165,7 @@ function norm.Db:select(sql: string, where: hashmap(string, string)): (sequence(
   if next(where) then
     sb:write(" WHERE ")
     for k, v in pairs(where) do
-      sb:writef("%s = %s AND ", base.escape_identifier(k), base.escape_literal(v))
+      sb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
     end
     sb:rollback(#(" AND "))
   end
@@ -125,15 +186,15 @@ function norm.Db:insert(
   ): (sequence(hashmap(string, string)), string)
 ---`
   local sb: stringbuilder
-  sb:writef("INSERT INTO %s (", base.escape_identifier(tbl_name))
+  sb:writef("INSERT INTO %s (", norm.escape_identifier(tbl_name))
   for k in pairs(values) do
-    sb:writef("%s, ", base.escape_identifier(k))
+    sb:writef("%s, ", norm.escape_identifier(k))
   end
   sb:rollback(2)
   sb:write(")")
   sb:write(" VALUES (")
   for _, v in pairs(values) do
-    sb:writef("%s, ", base.escape_literal(v))
+    sb:writef("%s, ", norm.escape_literal(v))
   end
   sb:rollback(2)
   sb:write(")")
@@ -141,7 +202,7 @@ function norm.Db:insert(
     if returning == "*" then
       sb:writef(" RETURNING %s", returning)
     else
-      sb:writef(" RETURNING %s", base.escape_identifier(returning))
+      sb:writef(" RETURNING %s", norm.escape_identifier(returning))
     end
   ## end
   local sql = sb:promote()
@@ -162,15 +223,15 @@ function norm.Db:update(
   ): (sequence(hashmap(string, string)), string)
 ---`
   local sb: stringbuilder
-  sb:writef("UPDATE %s SET ", base.escape_identifier(table_name))
+  sb:writef("UPDATE %s SET ", norm.escape_identifier(table_name))
   for k, v in pairs(values) do
-    sb:writef("%s = %s, ", base.escape_identifier(k), base.escape_literal(v))
+    sb:writef("%s = %s, ", norm.escape_identifier(k), norm.escape_literal(v))
   end
   sb:rollback(2)
   if next(conditions) then
     sb:write(" WHERE ")
     for k, v in pairs(conditions) do
-      sb:writef("%s = %s AND ", base.escape_identifier(k), base.escape_literal(v))
+      sb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
     end
     sb:rollback(#(" AND "))
   end
@@ -178,7 +239,7 @@ function norm.Db:update(
     if returning == "*" then
       sb:writef(" RETURNING %s", returning)
     else
-      sb:writef(" RETURNING %s", base.escape_identifier(returning))
+      sb:writef(" RETURNING %s", norm.escape_identifier(returning))
     end
   ## end
   local final = sb:promote()
@@ -194,34 +255,15 @@ If `returning` is not set, and empty sequence is returned
 function norm.Db:delete(table_name: string, conditions: hashmap(string, string)): string
 ---`
   local sb: stringbuilder
-  sb:writef("DELETE FROM %s WHERE ", base.escape_identifier(table_name))
+  sb:writef("DELETE FROM %s WHERE ", norm.escape_identifier(table_name))
   for k, v in pairs(conditions) do
-    sb:writef("%s = %s AND ", base.escape_identifier(k), base.escape_literal(v))
+    sb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
   end
   sb:rollback(#(" AND "))
   local final = sb:promote()
   local rows, err = self:query(final)
-  base.destroy_rows(rows)
+  norm.destroy_rows(rows)
   return err
-end
-
---- ### norm.new
---[[-
-This function returns a new [norm.Db](#normdb) object and an error string
-If no error occurs, an empty string is returned 
--]]
----`
-function norm.new(conf: norm.Config): (norm.Db, string)
----`
-  switch conf.kind do
-    case norm.DbKind.not_set then      
-      return {}, "DB object not initialised"
-    case norm.DbKind.sqlite then
-      local sqlite_db, err = sqlite.new(conf.sqlite.name)
-      if err ~= "" then return {}, err end
-    return {kind = conf.kind, sqlite_db = sqlite_db}, ""
-  end
-  return {}, "UNREACHABLE"
 end
 
 --- ### norm.Schema
@@ -256,6 +298,7 @@ local norm.Schema.ColumnOptions = @record{
 local norm.Schema.ColumnType = @enum{
   not_set = 0,
   integer,
+  serial,
   numeric,
   real,
   text,
@@ -269,6 +312,9 @@ local function schema_type_tostring(st: norm.Schema.ColumnType, opts: norm.Schem
   switch st do
     case norm.Schema.ColumnType.integer then
       sb:write("INTEGER ")
+      if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
+    case norm.Schema.ColumnType.serial then
+      sb:write("SERIAL ")
       if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
     case norm.Schema.ColumnType.numeric then
       sb:write("NUMERIC ")
@@ -309,10 +355,13 @@ end
 local function db_start_transaction(db: norm.Db)
   switch db.kind do
     case norm.DbKind.sqlite then
-      return sqlite.begin_transaction(db.sqlite_db)
+      return sqlite.begin_transaction(db.conn.sqlite_db)
+    case norm.DbKind.pg then
+      return pg.begin_transaction(db.conn.pg_db)
     else
-      return "UNREACHABLE"
+      error("UNIMPLEMENTED")
   end
+  return "UNREACHABLE"
 end
 
 local function db_get_migrated(db: norm.Db): hashmap(string, boolean)
@@ -325,7 +374,7 @@ local function db_get_migrated(db: norm.Db): hashmap(string, boolean)
   for _, col in ipairs(query_rows) do
     migrated[string.copy(col["migration"])] = true
   end
-  base.destroy_rows(query_rows)
+  norm.destroy_rows(query_rows)
   return migrated
 end
 
@@ -359,12 +408,23 @@ local function db_commit_or_rollback(db: norm.Db, err: string, ran_migrations: u
     case norm.DbKind.sqlite then
       if err ~= "" then
         print("Failed to migrate: " .. err)
-        sqlite.rollback(db.sqlite_db)
+        sqlite.rollback(db.conn.sqlite_db)
         print("Rolling back")
       else
-        sqlite.commit(db.sqlite_db)
+        sqlite.commit(db.conn.sqlite_db)
         print(("Ran %d migrations"):format(ran_migrations))
       end
+    case norm.DbKind.pg then
+      if err ~= "" then
+        print("Failed to migrate: " .. err)
+        pg.rollback(db.conn.pg_db)
+        print("Rolling back")
+      else
+        pg.commit(db.conn.pg_db)
+        print(("Ran %d migrations"):format(ran_migrations))
+      end
+    else
+      error("UNIMPLEMENTED")
   end
   return err
 end
@@ -390,10 +450,10 @@ function norm.Schema.create_table(db: norm.Db, name: string, columns: sequence(n
   assert(name ~= "", "table name cannot be an empty string")
   assert(#columns > 0, "Cannot have an empty list of columns")
   local sb: stringbuilder
-  sb:writef("CREATE TABLE IF NOT EXISTS %s (\n", base.escape_identifier(name))
+  sb:writef("CREATE TABLE IF NOT EXISTS %s (\n", norm.escape_identifier(name))
   for i, v in ipairs(columns) do
     assert(v.name ~= "", "column name cannot be an empty string")
-    sb:writef("  %s %s,\n", base.escape_identifier(v.name), schema_type_tostring(v.type, v.opts))
+    sb:writef("  %s %s,\n", norm.escape_identifier(v.name), schema_type_tostring(v.type, v.opts))
   end
   sb:rollback(2)
   sb:write("\n)")
@@ -447,9 +507,9 @@ function norm.Schema.create_index(db: norm.Db, name: string, cols: sequence(stri
   for _, v in ipairs(cols) do
     sb:writef("_%s", v)
   end
-  sb:writef("_idx\" ON %s (", base.escape_identifier(name))
+  sb:writef("_idx\" ON %s (", norm.escape_identifier(name))
   for i, v in ipairs(cols) do
-    sb:write(base.escape_identifier(v))
+    sb:write(norm.escape_identifier(v))
     if not (i == #cols) then
       sb:write(", ")
     end
@@ -493,8 +553,8 @@ function norm.Schema.add_column(db: norm.Db, tbl_name: string, col: norm.Schema.
 ---`
   assert(col.name ~= "", "column name cannot be an empty string")
   local sql = ("ALTER TABLE %s ADD COLUMN %s %s"):format(
-    base.escape_identifier(tbl_name),
-    base.escape_identifier(col.name),
+    norm.escape_identifier(tbl_name),
+    norm.escape_identifier(col.name),
     schema_type_tostring(col.type, col.opts)
   )
   return db_run(db, sql)
@@ -509,8 +569,8 @@ If no error occurs, the string is empty
 function norm.Schema.drop_column(db: norm.Db, tbl_name: string, col_name: string): string
 ---`
   local sql = ("ALTER TABLE %s DROP COLUMN %s"):format(
-    base.escape_identifier(tbl_name),
-    base.escape_identifier(col_name)    
+    norm.escape_identifier(tbl_name),
+    norm.escape_identifier(col_name)    
   )
   return db_run(db, sql)
 end
@@ -524,9 +584,9 @@ If no error occurs, the string is empty
 function norm.Schema.rename_column(db: norm.Db, tbl_name: string, old_col_name: string, new_col_name: string): string
 ---`
   local sql = ("ALTER TABLE %s RENAME COLUMN %s to %s"):format(
-    base.escape_identifier(tbl_name),
-    base.escape_identifier(old_col_name),    
-    base.escape_identifier(new_col_name)    
+    norm.escape_identifier(tbl_name),
+    norm.escape_identifier(old_col_name),    
+    norm.escape_identifier(new_col_name)    
   )
   return db_run(db, sql)
 end
@@ -540,22 +600,10 @@ If no error occurs, the string is empty
 function norm.Schema.rename_table(db: norm.Db, old_tbl_name: string, new_tbl_name: string): string
 ---`
   local sql = ("ALTER TABLE %s RENAME to %s"):format(
-    base.escape_identifier(old_tbl_name),
-    base.escape_identifier(new_tbl_name)    
+    norm.escape_identifier(old_tbl_name),
+    norm.escape_identifier(new_tbl_name)    
   )
   return db_run(db, sql)
-end
-
-local function db_create_migration_table(db: norm.Db)
-  if not db:table_exists("norm_migrations") then
-    print("Creating migrations table")
-    switch db.kind do
-      case norm.DbKind.sqlite then
-        norm.Schema.create_table(db, "norm_migrations", {
-          {"migration", norm.Schema.ColumnType.text, { primary_key = true }}
-        })
-    end
-  end
 end
 
 --- ### norm.migrate
@@ -567,7 +615,12 @@ If no error occurs, the string is empty
 function norm.migrate(db: norm.Db, migrations: sequence(norm.Schema.Migration)): string
 ---`
   print("Running migrations")
-  db_create_migration_table(db)
+  if not db:table_exists("norm_migrations") then
+    print("Creating migrations table")
+    norm.Schema.create_table(db, "norm_migrations", {
+      {"migration", norm.Schema.ColumnType.text, { primary_key = true }}
+    })
+  end
   local err = db_start_transaction(db)
   local migrated = db_get_migrated(db)
   local ran_migrations, err = db_migrate(db, migrated, migrations)
@@ -605,7 +658,7 @@ If no error occurs, the string is empty
 function norm.Model.new(db: norm.Db, name: string): (norm.Model, string)
 ---`
   if not db:table_exists(name) then
-    return {}, ("Table `%s` does not exist in the database"):format(name)
+    return {}, ("Table `%s` does not exist in the database"):format((name))
   end
   return {
     db = db,
@@ -622,12 +675,12 @@ If no error occurs, the string is empty
 function norm.Model:find(conditions: hashmap(string, string)): (norm.Model.Inst, string)
 ---`
   local sb: stringbuilder
-  sb:writef("SELECT * FROM %s ", base.escape_identifier(self.name))
+  sb:writef("SELECT * FROM %s ", norm.escape_identifier(self.name))
   local row: hashmap(string, string)
   if next(conditions) then
     sb:write(" WHERE ")
     for k, v in pairs(conditions) do
-      sb:writef("%s = %s AND ", base.escape_identifier(k), base.escape_literal(v))
+      sb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
     end
     sb:rollback(#(" AND "))
   end
@@ -652,7 +705,7 @@ If no error occurs, the string is empty
 ---`
 function norm.Model:select(conditions: hashmap(string, string)): (sequence(norm.Model.Inst), string)
 ---`
-  local sql = "* FROM " .. base.escape_identifier(self.name)
+  local sql = "* FROM " .. norm.escape_identifier(self.name)
   local result: sequence(norm.Model.Inst)
   local rows, err = self.db:select(sql, conditions)
   if err ~= "" then

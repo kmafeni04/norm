@@ -27,9 +27,9 @@ end
 function M.begin_transaction(db: *sqlite3): string
   local err_msg: cstring
   local rc = sqlite3_exec(db, "BEGIN TRANSACTION;", nilptr, nilptr, &err_msg)
+  defer sqlite3_free(err_msg) end
   if rc ~= SQLITE_OK then
     local str: string = string.copy(err_msg)
-    sqlite3_free(err_msg)
     return str
   end
   return ""
@@ -38,9 +38,9 @@ end
 function M.commit(db: *sqlite3)
   local err_msg: cstring
   local rc = sqlite3_exec(db, "COMMIT;", nilptr, nilptr, &err_msg)
+  defer sqlite3_free(err_msg) end
   if rc ~= SQLITE_OK then
     local str: string = string.copy(err_msg)
-    sqlite3_free(err_msg)
     return str
   end
   return ""
@@ -49,9 +49,9 @@ end
 function M.rollback(db: *sqlite3)
   local err_msg: cstring
   local rc = sqlite3_exec(db, "ROLLBACK;", nilptr, nilptr, &err_msg)
+  defer sqlite3_free(err_msg) end
   if rc ~= SQLITE_OK then
     local str: string = string.copy(err_msg)
-    sqlite3_free(err_msg)
     return str
   end
   return ""

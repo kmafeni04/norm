@@ -20,6 +20,22 @@ See [base.nelua](#basenelua)
 local norm.destroy_rows = base.destroy_rows
 ```
 
+### norm.escape_identifier
+
+See [base.nelua](#basenelua)
+
+```lua
+local norm.escape_identifier = base.escape_identifier
+```
+
+### norm.escape_literal
+
+See [base.nelua](#basenelua)
+
+```lua
+local norm.escape_literal = base.escape_literal
+```
+
 ### norm.DbKind
 
 Enum used to specify what database is connected in the [norm.Db](#normdb) module
@@ -28,7 +44,7 @@ Enum used to specify what database is connected in the [norm.Db](#normdb) module
 local norm.DbKind = @enum{
   not_set = 0,
   sqlite,
-  postgres,
+  pg,
   mysql
 }
 ```
@@ -40,11 +56,19 @@ This record is used to configure the ORM on what database should be connected
 ```lua
 local norm.Config = @record{
   kind: norm.DbKind,
-  sqlite: record{
-    name: string
-  },
-  postgress: record{},
-  mysql: record{}
+  conn: union{
+    sqlite: record{
+      name: string
+    },
+    pg: record{
+      name: string,
+      user: string,
+      password: string,
+      host: string,
+      port: string
+    },
+    mysql: record{}
+  }
 }
 ```
 
@@ -55,8 +79,20 @@ This module is a collection of functions to make queries to the database
 ```lua
 local norm.Db = @record{
   kind: norm.DbKind,
-  sqlite_db: *sqlite.type
+  conn: union{
+    sqlite_db: *sqlite.type,
+    pg_db: *pg.type
+  }
 }
+```
+
+### norm.Db.new
+
+This function returns a new [norm.Db](#normdb) object and an error string
+If no error occurs, an empty string is returned
+
+```lua
+function norm.Db.new(conf: norm.Config): (norm.Db, string)
 ```
 
 ### norm.Db:destroy
@@ -130,15 +166,6 @@ If `returning` is not set, and empty sequence is returned
 function norm.Db:delete(table_name: string, conditions: hashmap(string, string)): string
 ```
 
-### norm.new
-
-This function returns a new [norm.Db](#normdb) object and an error string
-If no error occurs, an empty string is returned
-
-```lua
-function norm.new(conf: norm.Config): (norm.Db, string)
-```
-
 ### norm.Schema
 
 This is a collection of types and function for creating and managing your database schema
@@ -179,6 +206,7 @@ This defines the type of a column in [norm.Schema.Column](#normschemacolumn)
 local norm.Schema.ColumnType = @enum{
   not_set = 0,
   integer,
+  serial,
   numeric,
   real,
   text,
