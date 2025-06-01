@@ -1,0 +1,99 @@
+require "utf8"
+
+require "..libs.mariadb"
+local base = require ".base"
+
+local M = @record{}
+
+local M.type: type = MYSQL
+
+function M.new(host: string, user: string, password: string, dbname: string, port: cuint): (*MYSQL, string)
+  local conn: *MYSQL = mysql_init(nilptr)
+  if conn == nilptr then
+    return nilptr, "MySQL initialization failed"
+  end
+
+  if mysql_real_connect(conn, host, user, password, dbname, port, nilptr, 65536) == nilptr then
+    local err = string.copy(mysql_error(conn))
+    mysql_close(conn)
+    return nilptr, ("Cannot connect to database: %s"):format(err)
+  end
+
+  
+  if mysql_query(conn, "SET sql_notes = 0;") ~= 0 then
+    local err = string.copy(mysql_error(conn))
+    mysql_close(conn)
+    return nilptr, err
+  end
+
+  if mysql_query(conn, "SET sql_mode = CONCAT(@@sql_mode, ',ANSI_QUOTES');") ~= 0 then
+    local err = string.copy(mysql_error(conn))
+    mysql_close(conn)
+    return nilptr, err
+  end
+
+  return conn, ""
+end
+
+function M.destroy(conn: *MYSQL)
+  mysql_close(conn)
+end
+
+function M.begin_transaction(conn: *MYSQL): string
+  if mysql_query(conn, "START TRANSACTION;") ~= 0 then
+    return string.copy(mysql_error(conn))
+  end
+  return ""
+end
+
+function M.commit(conn: *MYSQL): string
+  if mysql_query(conn, "COMMIT;") ~= 0 then
+    return string.copy(mysql_error(conn))
+  end
+  return ""
+end
+
+function M.rollback(conn: *MYSQL): string
+  if mysql_query(conn, "ROLLBACK;") ~= 0 then
+    return string.copy(mysql_error(conn))
+  end
+  return ""
+end
+
+function M.query(conn: *MYSQL, query: string): (sequence(hashmap(string, string)), string)
+  local rows: sequence(hashmap(string, string))
+  print(query)
+
+  if mysql_query(conn, query) ~= 0 then
+    return rows, string.copy(mysql_error(conn))
+  end
+
+  local result = mysql_store_result(conn)
+  if result == nilptr then
+    return rows, string.copy(mysql_error(conn))
+  end
+
+  defer mysql_free_result(result) end
+
+  local num_fields = mysql_num_fields(result)
+  local fields = (@*[0]MYSQL_FIELD)(mysql_fetch_fields(result))
+
+  while true do
+    local row = (@*[0]cstring)(mysql_fetch_row(result))
+    if row == nilptr then break end
+
+    local row_data: hashmap(string, string)
+
+    for i=0, <num_fields do
+      local field_name = string.copy((@cstring)(fields[i].name))
+      local value = row ~= nilptr and string.copy(row[i]) or "NULL"
+      row_data[field_name] = value
+    end
+
+    rows:push(row_data)
+  end
+
+  return rows, ""
+end
+
+return M

@@ -20,7 +20,20 @@ local db, err = norm.Db.new({
       user = "test_user",
       password = "test_password",
       host = "localhost",
-      port = "5432",
+      port = 5432,
+    }
+  }
+})
+## elseif MYSQL then
+local db, err = norm.Db.new({
+  kind = norm.DbKind.mysql,
+  conn = {
+    mysql = {
+      name = "test_db",
+      user = "test_user",
+      password = "test_password",
+      host = "localhost",
+      port = 5432,
     }
   }
 })
@@ -51,8 +64,14 @@ local err = norm.migrate(db, {
             {"name", type.text, { unique = true }},
             {"age", type.integer}
           })
+        case norm.DbKind.mysql then
+          err = schema.create_table(db, "users", {
+            {"id", type.id, { primary_key = true }},
+            {"name", type.text, { unique = true }},
+            {"age", type.integer}
+          })
         else
-          err = "UNREACHABLE"
+          error("UNIMPLEMENTED")
       end
       if err ~= "" then
         return err
@@ -78,8 +97,14 @@ local err = norm.migrate(db, {
             {"name", type.text, { unique = true }},
             {"age", type.integer}
           })
+        case norm.DbKind.mysql then
+          local err = schema.create_table(db, "players", {
+            {"id", type.id, { primary_key = true }},
+            {"name", type.text, { unique = true }},
+            {"age", type.integer}
+          })
         else
-          err = "UNREACHABLE"
+          error("UNIMPLEMENTED")
       end
       if err ~= "" then
         return err
@@ -170,8 +195,13 @@ assert(err == "", err)
 
 switch db.kind do
   case norm.DbKind.sqlite then
-    os.remove("test.db")
+    local ok, err = os.remove("test.db")
+    assert(ok, err)
   case norm.DbKind.pg then
-    db:query("DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO postgres; GRANT ALL ON SCHEMA public TO public;")
+    local _, err = db:query("DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO postgres; GRANT ALL ON SCHEMA public TO public;")
+    assert(err == "", err)
+  case norm.DbKind.mysql then
+    local _, err = db:query("DROP DATABASE IF EXISTS test_db; CREATE DATABASE test_db; GRANT ALL PRIVILEGES ON test_db.* TO 'test_user'@'localhost'; FLUSH PRIVILEGES;")
+    assert(err == "", err)
 end
 

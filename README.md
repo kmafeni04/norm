@@ -65,9 +65,15 @@ local norm.Config = @record{
       user: string,
       password: string,
       host: string,
-      port: string
+      port: uinteger
     },
-    mysql: record{}
+    mysql: record{
+      name: string,
+      user: string,
+      password: string,
+      host: string,
+      port: uinteger
+    }
   }
 }
 ```
@@ -81,7 +87,8 @@ local norm.Db = @record{
   kind: norm.DbKind,
   conn: union{
     sqlite_db: *sqlite.type,
-    pg_db: *pg.type
+    pg_db: *pg.type,
+    mysql_db: *mysql.type
   }
 }
 ```
@@ -150,7 +157,7 @@ If `returning` is not set, and empty sequence is returned
 
 ```lua
 function norm.Db:update(
-    table_name: string,
+    tbl_name: string,
     values: hashmap(string, string),
     conditions: hashmap(string, string),
     returning: facultative(string)
@@ -163,7 +170,7 @@ This function updates a table `tbl_name` with `values` where `conditions` return
 If `returning` is not set, and empty sequence is returned
 
 ```lua
-function norm.Db:delete(table_name: string, conditions: hashmap(string, string)): string
+function norm.Db:delete(tbl_name: string, conditions: hashmap(string, string)): string
 ```
 
 ### norm.Schema
@@ -203,13 +210,15 @@ local norm.Schema.ColumnOptions = @record{
 This defines the type of a column in [norm.Schema.Column](#normschemacolumn)
 
 ```lua
-local norm.Schema.ColumnType = @enum{
+local norm.Schema.ColumnType: type = @enum{
   not_set = 0,
   integer,
   serial,
+  id,
   numeric,
   real,
   text,
+  varchar,
   blob,
   any
 }

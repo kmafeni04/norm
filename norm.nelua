@@ -4,6 +4,7 @@ require "io"
 local base = require ".utils.base"
 local sqlite = require ".utils.sqlite"
 local pg = require ".utils.pg"
+local mysql = require ".utils.mysql"
 
 --- ### norm
 --- The norm module
@@ -54,9 +55,15 @@ local norm.Config = @record{
       user: string,
       password: string,
       host: string,
-      port: string
+      port: uinteger
     },
-    mysql: record{}
+    mysql: record{
+      name: string,
+      user: string,
+      password: string,
+      host: string,
+      port: uinteger
+    }
   }
 }
 ---`
@@ -68,7 +75,8 @@ local norm.Db = @record{
   kind: norm.DbKind,
   conn: union{
     sqlite_db: *sqlite.type,
-    pg_db: *pg.type
+    pg_db: *pg.type,
+    mysql_db: *mysql.type
   }
 }
 ---`
@@ -92,13 +100,21 @@ function norm.Db.new(conf: norm.Config): (norm.Db, string)
       local info = conf.conn.pg
       info.user = info.user ~= "" and info.user or "postgres"
       info.host = info.host ~= "" and info.host or "127.0.0.1"
-      info.port = info.port ~= "" and info.port or "5432"
+      info.port = info.port ~= 0 and info.port or 5432
       local conn_info = ("dbname=%s user=%s password=%s host=%s port=%s"):format(info.name, info.user, info.password, info.host, info.port)
       local pg_db, err = pg.new(conn_info)
       if err ~= "" then return {}, err end
       return {kind = conf.kind, conn= {pg_db = pg_db}}, ""
+    case norm.DbKind.mysql then
+      local info = conf.conn.mysql
+      info.user = info.user ~= "" and info.user or "root"
+      info.host = info.host ~= "" and info.host or "127.0.0.1"
+      info.port = info.port ~= 0 and info.port or 3306
+      local mysql_db, err = mysql.new(info.host, info.user, info.password, info.name, info.port)
+      if err ~= "" then return {}, err end
+      return {kind = conf.kind, conn= {mysql_db = mysql_db}}, ""
   end
-  return {}, "UNREACHABLE"
+  return {}, "UNREACHABLE DB NEW"
 end
 
 
@@ -129,8 +145,12 @@ function norm.Db:query(sql: string): (sequence(hashmap(string, string)), string)
       return sqlite.query(self.conn.sqlite_db, sql)
     case norm.DbKind.pg then
       return pg.query(self.conn.pg_db, sql)
+    case norm.DbKind.mysql then
+      return mysql.query(self.conn.mysql_db, sql)
+    else
+      error("UNIMPLEMENTED")
   end
-  return {}, "UNREACHABLE"
+  return {}, "UNREACHABLE QUERY"
 end
 
 --- ### norm.Db:table_exists
@@ -144,8 +164,12 @@ function norm.Db:table_exists(name: string): boolean
       sql = ("SELECT \"name\" FROM sqlite_master WHERE type='table' AND name=%s"):format(norm.escape_literal(name))
     case norm.DbKind.pg then
       sql = ("SELECT tablename FROM pg_catalog.pg_tables WHERE tablename = %s"):format(norm.escape_literal(name))
+    case norm.DbKind.mysql then
+      sql = (
+        "SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME = %s;"
+      ):format(norm.escape_literal(name))
     else
-      error("UNIMPLEMENTED")
+      error("UNKNOWN")
   end
   local rows, err = self:query(sql)
   local res = #rows > 0
@@ -199,10 +223,27 @@ function norm.Db:insert(
   sb:rollback(2)
   sb:write(")")
   ## if returning.type.is_string then
-    if returning == "*" then
-      sb:writef(" RETURNING %s", returning)
+    if self.kind == norm.DbKind.mysql then
+      self:query(sb:promote())
+      local ssb: stringbuilder
+      if returning == "*" then
+        ssb:writef("SELECT %s FROM %s", returning, norm.escape_identifier(tbl_name))
+      else
+        ssb:writef("SELECT %s FROM %s", norm.escape_identifier(returning), norm.escape_identifier(tbl_name))
+      end
+      ssb:write(" WHERE ")
+      for k, v in pairs(values) do
+        ssb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
+      end
+      ssb:rollback(#(" AND "))
+      ssb:write(" LIMIT 1")
+      return self:query(ssb:promote())
     else
-      sb:writef(" RETURNING %s", norm.escape_identifier(returning))
+      if returning == "*" then
+        sb:writef(" RETURNING %s", returning)
+      else
+        sb:writef(" RETURNING %s", norm.escape_identifier(returning))
+      end
     end
   ## end
   local sql = sb:promote()
@@ -216,14 +257,14 @@ If `returning` is not set, and empty sequence is returned
 -]]
 ---`
 function norm.Db:update(
-    table_name: string,
+    tbl_name: string,
     values: hashmap(string, string),
     conditions: hashmap(string, string),
     returning: facultative(string)
   ): (sequence(hashmap(string, string)), string)
 ---`
   local sb: stringbuilder
-  sb:writef("UPDATE %s SET ", norm.escape_identifier(table_name))
+  sb:writef("UPDATE %s SET ", norm.escape_identifier(tbl_name))
   for k, v in pairs(values) do
     sb:writef("%s = %s, ", norm.escape_identifier(k), norm.escape_literal(v))
   end
@@ -236,14 +277,36 @@ function norm.Db:update(
     sb:rollback(#(" AND "))
   end
   ## if returning.type.is_string then
-    if returning == "*" then
-      sb:writef(" RETURNING %s", returning)
+    if self.kind == norm.DbKind.mysql then
+      self:query(sb:promote())
+      local ssb: stringbuilder
+      if returning == "*" then
+        ssb:writef("SELECT %s FROM %s", returning, norm.escape_identifier(tbl_name))
+      else
+        ssb:writef("SELECT %s FROM %s", norm.escape_identifier(returning), norm.escape_identifier(tbl_name))
+      end
+      if next(conditions) then
+        ssb:write(" WHERE ")
+        for k, v in pairs(conditions) do
+          if values:has(k) then
+            ssb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(values[k]))
+          else
+            ssb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
+          end
+        end
+        ssb:rollback(#(" AND "))
+      end
+      ssb:write(" LIMIT 1")
+      return self:query(ssb:promote())
     else
-      sb:writef(" RETURNING %s", norm.escape_identifier(returning))
+      if returning == "*" then
+        sb:writef(" RETURNING %s", returning)
+      else
+        sb:writef(" RETURNING %s", norm.escape_identifier(returning))
+      end
     end
   ## end
-  local final = sb:promote()
-  return self:query(final)
+  return self:query(sb:promote())
 end
 
 --- ### norm.Db:update
@@ -252,10 +315,10 @@ This function updates a table `tbl_name` with `values` where `conditions` return
 If `returning` is not set, and empty sequence is returned
 -]]
 ---`
-function norm.Db:delete(table_name: string, conditions: hashmap(string, string)): string
+function norm.Db:delete(tbl_name: string, conditions: hashmap(string, string)): string
 ---`
   local sb: stringbuilder
-  sb:writef("DELETE FROM %s WHERE ", norm.escape_identifier(table_name))
+  sb:writef("DELETE FROM %s WHERE ", norm.escape_identifier(tbl_name))
   for k, v in pairs(conditions) do
     sb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
   end
@@ -295,13 +358,15 @@ local norm.Schema.ColumnOptions = @record{
 --- ### norm.Schema.ColumnType
 --- This defines the type of a column in [norm.Schema.Column](#normschemacolumn)
 ---`
-local norm.Schema.ColumnType = @enum{
+local norm.Schema.ColumnType: type = @enum{
   not_set = 0,
   integer,
   serial,
+  id,
   numeric,
   real,
   text,
+  varchar,
   blob,
   any
 }
@@ -316,6 +381,9 @@ local function schema_type_tostring(st: norm.Schema.ColumnType, opts: norm.Schem
     case norm.Schema.ColumnType.serial then
       sb:write("SERIAL ")
       if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
+    case norm.Schema.ColumnType.id then
+      sb:write("INTEGER AUTO_INCREMENT ")
+      if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
     case norm.Schema.ColumnType.numeric then
       sb:write("NUMERIC ")
       if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
@@ -324,6 +392,8 @@ local function schema_type_tostring(st: norm.Schema.ColumnType, opts: norm.Schem
       if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
     case norm.Schema.ColumnType.text then
       sb:write("TEXT ")
+    case norm.Schema.ColumnType.varchar then
+      sb:write("VARCHAR(255) ")
     case norm.Schema.ColumnType.blob then
       sb:write("BLOB ")
     case norm.Schema.ColumnType.any then
@@ -358,15 +428,17 @@ local function db_start_transaction(db: norm.Db)
       return sqlite.begin_transaction(db.conn.sqlite_db)
     case norm.DbKind.pg then
       return pg.begin_transaction(db.conn.pg_db)
+    case norm.DbKind.mysql then
+      return mysql.begin_transaction(db.conn.mysql_db)
     else
       error("UNIMPLEMENTED")
   end
-  return "UNREACHABLE"
+  return "UNREACHABLE DB RUN"
 end
 
 local function db_get_migrated(db: norm.Db): hashmap(string, boolean)
   local migrated: hashmap(string, boolean)
-  local sql = "SELECT migration FROM \"norm_migrations\""
+  local sql = 'SELECT "migration" FROM "norm_migrations"'
   local query_rows, query_err = db:query(sql)
   if query_err ~= "" then
     return migrated
@@ -423,6 +495,15 @@ local function db_commit_or_rollback(db: norm.Db, err: string, ran_migrations: u
         pg.commit(db.conn.pg_db)
         print(("Ran %d migrations"):format(ran_migrations))
       end
+    case norm.DbKind.mysql then
+      if err ~= "" then
+        print("Failed to migrate: " .. err)
+        mysql.rollback(db.conn.mysql_db)
+        print("Rolling back")
+      else
+        mysql.commit(db.conn.mysql_db)
+        print(("Ran %d migrations"):format(ran_migrations))
+      end
     else
       error("UNIMPLEMENTED")
   end
@@ -470,7 +551,7 @@ If no error occurs, the string is empty
 ---`
 function norm.Schema.drop_table(db: norm.Db, name: string): string
 ---`
-  local sql = ('DROP TABLE IF EXISTS "%s";'):format(name)
+  local sql = ('DROP TABLE IF EXISTS "%s"'):format(name)
   return db_run(db, sql)
 end
 
@@ -537,7 +618,10 @@ function norm.Schema.drop_index(db: norm.Db, name: string, cols: sequence(string
   for _, v in ipairs(cols) do
     sb:writef("_%s", v)
   end
-  sb:writef("_idx\"")
+  sb:write("_idx\"")
+  if db.kind == norm.DbKind.mysql then
+    sb:writef(" on %s", norm.escape_identifier(name))
+  end
 
   local final = sb:promote()
   return db_run(db, final)
@@ -617,9 +701,10 @@ function norm.migrate(db: norm.Db, migrations: sequence(norm.Schema.Migration)):
   print("Running migrations")
   if not db:table_exists("norm_migrations") then
     print("Creating migrations table")
-    norm.Schema.create_table(db, "norm_migrations", {
-      {"migration", norm.Schema.ColumnType.text, { primary_key = true }}
+    local err = norm.Schema.create_table(db, "norm_migrations", {
+      {"migration", norm.Schema.ColumnType.varchar, { primary_key = true }}
     })
+    assert(err == "", err)
   end
   local err = db_start_transaction(db)
   local migrated = db_get_migrated(db)
