@@ -2,7 +2,7 @@ require "os"
 
 local norm = require "norm"
 
-## if SQLITE then
+## if SQLITE_TEST then
 local db, err = norm.Db.new({
   kind = norm.DbKind.sqlite,
   conn = {
@@ -11,7 +11,7 @@ local db, err = norm.Db.new({
     }
   }
 })
-## elseif PG then
+## elseif PG_TEST then
 local db, err = norm.Db.new({
   kind = norm.DbKind.pg,
   conn = {
@@ -24,7 +24,7 @@ local db, err = norm.Db.new({
     }
   }
 })
-## elseif MYSQL then
+## elseif MYSQL_TEST then
 local db, err = norm.Db.new({
   kind = norm.DbKind.mysql,
   conn = {
@@ -38,7 +38,7 @@ local db, err = norm.Db.new({
   }
 })
 ## else
-## static_error("DB kind was not defined")
+  ## static_error("DB kind was not defined")
 ## end
 
 assert(err == "", err)
@@ -71,7 +71,7 @@ local err = norm.migrate(db, {
             {"age", type.integer}
           })
         else
-          error("UNIMPLEMENTED")
+          err = "UNKONWN DB kind for migration 1"
       end
       if err ~= "" then
         return err
@@ -104,7 +104,7 @@ local err = norm.migrate(db, {
             {"age", type.integer}
           })
         else
-          error("UNIMPLEMENTED")
+          err = "UNKONWN DB kind for migration 2"
       end
       if err ~= "" then
         return err

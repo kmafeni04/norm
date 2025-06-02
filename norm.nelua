@@ -147,8 +147,6 @@ function norm.Db:query(sql: string): (sequence(hashmap(string, string)), string)
       return pg.query(self.conn.pg_db, sql)
     case norm.DbKind.mysql then
       return mysql.query(self.conn.mysql_db, sql)
-    else
-      error("UNIMPLEMENTED")
   end
   return {}, "UNREACHABLE QUERY"
 end
@@ -372,13 +370,16 @@ local norm.Schema.ColumnType: type = @enum{
 }
 ---`
 
-local function schema_type_tostring(st: norm.Schema.ColumnType, opts: norm.Schema.ColumnOptions): string
+local function schema_type_tostring(db_kind: norm.DbKind, st: norm.Schema.ColumnType, opts: norm.Schema.ColumnOptions): (string, string)
   local sb: stringbuilder
   switch st do
     case norm.Schema.ColumnType.integer then
       sb:write("INTEGER ")
       if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
     case norm.Schema.ColumnType.serial then
+      if db_kind ~= norm.DbKind.pg then
+        return "", "SERIAL column type is only available in postgres"
+      end
       sb:write("SERIAL ")
       if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
     case norm.Schema.ColumnType.id then
@@ -399,7 +400,7 @@ local function schema_type_tostring(st: norm.Schema.ColumnType, opts: norm.Schem
     case norm.Schema.ColumnType.any then
       sb:write("ANY ")
     else
-      error("invalid Schema.Type: " .. st)
+      return "", "invalid Schema.Type: " .. st
   end
   if not opts.is_null then
     sb:write("NOT NULL ")
@@ -414,7 +415,7 @@ local function schema_type_tostring(st: norm.Schema.ColumnType, opts: norm.Schem
     sb:write("PRIMARY KEY ")
   end
   sb:rollback(1)
-  return sb:promote()
+  return sb:promote(), ""
 end
 
 local function db_run(db: norm.Db, sql: string): string
@@ -430,8 +431,6 @@ local function db_start_transaction(db: norm.Db)
       return pg.begin_transaction(db.conn.pg_db)
     case norm.DbKind.mysql then
       return mysql.begin_transaction(db.conn.mysql_db)
-    else
-      error("UNIMPLEMENTED")
   end
   return "UNREACHABLE DB RUN"
 end
@@ -505,7 +504,7 @@ local function db_commit_or_rollback(db: norm.Db, err: string, ran_migrations: u
         print(("Ran %d migrations"):format(ran_migrations))
       end
     else
-      error("UNIMPLEMENTED")
+      err = "UNKONWN DB KIND"
   end
   return err
 end
@@ -528,13 +527,23 @@ If no error occurs, the string is empty
 ---`
 function norm.Schema.create_table(db: norm.Db, name: string, columns: sequence(norm.Schema.Column)): string
 ---`
-  assert(name ~= "", "table name cannot be an empty string")
-  assert(#columns > 0, "Cannot have an empty list of columns")
+  if name == "" then
+    return "table name cannot be an empty string"
+  end
+  if #columns <= 0 then
+    return "Cannot have an empty list of columns"
+  end
   local sb: stringbuilder
   sb:writef("CREATE TABLE IF NOT EXISTS %s (\n", norm.escape_identifier(name))
   for i, v in ipairs(columns) do
-    assert(v.name ~= "", "column name cannot be an empty string")
-    sb:writef("  %s %s,\n", norm.escape_identifier(v.name), schema_type_tostring(v.type, v.opts))
+    if v.name == "" then
+      return "column name cannot be an empty string"
+    end
+    local val, err = schema_type_tostring(db.kind, v.type, v.opts)
+    if err ~= "" then
+      return err
+    end
+    sb:writef("  %s %s,\n", norm.escape_identifier(v.name), val)
   end
   sb:rollback(2)
   sb:write("\n)")
@@ -575,7 +584,9 @@ If no error occurs, the string is empty
 function norm.Schema.create_index(db: norm.Db, name: string, cols: sequence(string), opts: norm.Schema.IndexOpts): string
 ---`
   local sb: stringbuilder
-  assert(#cols > 0)
+  if #cols < 0 then
+    return "cols can not be an empty sequence"
+  end
   if opts.unique then
     sb:write("CREATE UNIQUE INDEX ")
   else
@@ -635,11 +646,17 @@ If no error occurs, the string is empty
 ---`
 function norm.Schema.add_column(db: norm.Db, tbl_name: string, col: norm.Schema.Column): string
 ---`
-  assert(col.name ~= "", "column name cannot be an empty string")
+  if col.name == "" then
+    return "column name cannot be an empty string"
+  end
+  local val, err = schema_type_tostring(db.kind, col.type, col.opts)
+  if err ~= "" then
+    return err
+  end
   local sql = ("ALTER TABLE %s ADD COLUMN %s %s"):format(
     norm.escape_identifier(tbl_name),
     norm.escape_identifier(col.name),
-    schema_type_tostring(col.type, col.opts)
+    val
   )
   return db_run(db, sql)
 end
@@ -704,7 +721,9 @@ function norm.migrate(db: norm.Db, migrations: sequence(norm.Schema.Migration)):
     local err = norm.Schema.create_table(db, "norm_migrations", {
       {"migration", norm.Schema.ColumnType.varchar, { primary_key = true }}
     })
-    assert(err == "", err)
+    if err ~= "" then
+      return err
+    end
   end
   local err = db_start_transaction(db)
   local migrated = db_get_migrated(db)
