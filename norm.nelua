@@ -358,33 +358,59 @@ local norm.Schema.ColumnOptions = @record{
 ---`
 local norm.Schema.ColumnType: type = @enum{
   not_set = 0,
+  -- generic types
   integer,
-  serial,
-  id,
+  blob,
+  text,
   numeric,
   real,
-  text,
   varchar,
-  blob,
-  any
+  any,
+  ----------
+  -- pg/mysql specific types
+  timestamp,
+  date,
+  ----------
+  -- pg specific types
+  serial,
+  ----------
+  -- mysql specific types
+  id,
+  ---------
 }
 ---`
 
 local function schema_type_tostring(db_kind: norm.DbKind, st: norm.Schema.ColumnType, opts: norm.Schema.ColumnOptions): (string, string)
   local sb: stringbuilder
+  defer sb:destroy() end
   switch st do
     case norm.Schema.ColumnType.integer then
       sb:write("INTEGER ")
       if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
     case norm.Schema.ColumnType.serial then
       if db_kind ~= norm.DbKind.pg then
-        return "", "SERIAL column type is only available in postgres"
+        return "", "serial type is only available in postgres"
       end
       sb:write("SERIAL ")
       if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
     case norm.Schema.ColumnType.id then
+      if db_kind ~= norm.DbKind.mysql then
+        return "", "id type is only available in mysql"
+      end
       sb:write("INTEGER AUTO_INCREMENT ")
       if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
+    case norm.Schema.ColumnType.timestamp then
+      if db_kind ~= norm.DbKind.mysql and db_kind ~= norm.DbKind.pg then
+        return "", "timestamp type is only available in mysql and postgres"
+      end
+      sb:write("TIMESTAMP ")
+      if opts.default_val == "" and not opts.primary_key then opts.default_val = "CURRENT_TIMESTAMP" end
+    case norm.Schema.ColumnType.date then
+      if db_kind ~= norm.DbKind.mysql and db_kind ~= norm.DbKind.pg then
+        return "", "date type is only available in mysql and postgres"
+      end
+      sb:write("DATE ")
+      if opts.default_val == "" and not opts.primary_key then opts.default_val = "CURRENT_DATE" end
     case norm.Schema.ColumnType.numeric then
       sb:write("NUMERIC ")
       if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
@@ -415,7 +441,8 @@ local function schema_type_tostring(db_kind: norm.DbKind, st: norm.Schema.Column
     sb:write("PRIMARY KEY ")
   end
   sb:rollback(1)
-  return sb:promote(), ""
+  local sql = sb:promote()
+  return sql, ""
 end
 
 local function db_run(db: norm.Db, sql: string): string
@@ -522,10 +549,11 @@ local norm.Schema.Column = @record{
 --- ### norm.Schema.create_table
 --[[-
 This function creates a table, `name`, with the specified `columns` returning an error string
+`extra_sql` is appended before the final ) of the create query
 If no error occurs, the string is empty
 -]]
 ---`
-function norm.Schema.create_table(db: norm.Db, name: string, columns: sequence(norm.Schema.Column)): string
+function norm.Schema.create_table(db: norm.Db, name: string, columns: sequence(norm.Schema.Column), extra_sql: string): string
 ---`
   if name == "" then
     return "table name cannot be an empty string"
@@ -546,6 +574,9 @@ function norm.Schema.create_table(db: norm.Db, name: string, columns: sequence(n
     sb:writef("  %s %s,\n", norm.escape_identifier(v.name), val)
   end
   sb:rollback(2)
+  if extra_sql ~= "" then
+    sb:writef(",\n %s", extra_sql)
+  end
   sb:write("\n)")
   local sql = sb:promote()
 

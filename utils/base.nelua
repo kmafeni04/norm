@@ -1,3 +1,5 @@
+require "os"
+
 --[[-
 ## base.nelua
 
@@ -19,6 +21,17 @@ end
 function base.escape_literal(s: string)
 ---`
  return "'" .. (s:gsub("'", "''")) .. "'"
+end
+
+--- ### base.format_date
+--[[-
+Returns a date string formatted properly for insertion in the database.
+The `time` argument is optional, will default to the current UTC time.
+-]]
+---`
+function base.format_date(time: facultative(integer))
+---`
+  return os.date("!%Y-%m-%d %H:%M:%S", time)
 end
 
 --- ### base.destroy_rows

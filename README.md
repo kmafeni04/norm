@@ -212,15 +212,25 @@ This defines the type of a column in [norm.Schema.Column](#normschemacolumn)
 ```lua
 local norm.Schema.ColumnType: type = @enum{
   not_set = 0,
+  -- generic types
   integer,
-  serial,
-  id,
+  blob,
+  text,
   numeric,
   real,
-  text,
   varchar,
-  blob,
-  any
+  any,
+  ----------
+  -- pg/mysql specific types
+  timestamp,
+  date,
+  ----------
+  -- pg specific types
+  serial,
+  ----------
+  -- mysql specific types
+  id,
+  ---------
 }
 ```
 
@@ -239,10 +249,11 @@ local norm.Schema.Column = @record{
 ### norm.Schema.create_table
 
 This function creates a table, `name`, with the specified `columns` returning an error string
+`extra_sql` is appended before the final ) of the create query
 If no error occurs, the string is empty
 
 ```lua
-function norm.Schema.create_table(db: norm.Db, name: string, columns: sequence(norm.Schema.Column)): string
+function norm.Schema.create_table(db: norm.Db, name: string, columns: sequence(norm.Schema.Column), extra_sql: string): string
 ```
 
 ### norm.Schema.drop_table
@@ -438,6 +449,15 @@ Escapes a string `s` so it can be used as a literal in sql queries
 
 ```lua
 function base.escape_literal(s: string)
+```
+
+### base.format_date
+
+Returns a date string formatted properly for insertion in the database.
+The `time` argument is optional, will default to the current UTC time.
+
+```lua
+function base.format_date(time: facultative(integer))
 ```
 
 ### base.destroy_rows
