@@ -236,7 +236,7 @@ local norm.Schema.ColumnType: type = @enum{
 }
 ```
 
-### norm.Schema.ColumnType
+### norm.Schema.Column
 
 This defines the type of a column in [norm.Schema.Column](#normschemacolumn)
 
