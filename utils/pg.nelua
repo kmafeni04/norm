@@ -1,4 +1,7 @@
 require "..libs.libpq-fe"
+
+local logger = require ".logger"
+
 local M = @record{}
 
 local M.type: type = PGconn
@@ -53,9 +56,9 @@ function M.rollback(db: *PGconn): string
   return ""
 end
 
-function M.query(db: *PGconn, sql: string): (sequence(hashmap(string, string)), string)
+function M.query(log: logger.NotSetOrBool, db: *PGconn, sql: string): (sequence(hashmap(string, string)), string)
   local rows: sequence(hashmap(string, string))
-  print(sql)
+  logger.log(log, sql)
 
   local res: *PGresult = PQexec(db, sql)
   if PQresultStatus(res) ~= PGRES_TUPLES_OK then

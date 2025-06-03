@@ -1,7 +1,6 @@
-require "utf8"
-
 require "..libs.mariadb"
-local base = require ".base"
+
+local logger = require ".logger"
 
 local M = @record{}
 
@@ -60,9 +59,9 @@ function M.rollback(conn: *MYSQL): string
   return ""
 end
 
-function M.query(conn: *MYSQL, query: string): (sequence(hashmap(string, string)), string)
+function M.query(log: logger.NotSetOrBool, conn: *MYSQL, query: string): (sequence(hashmap(string, string)), string)
   local rows: sequence(hashmap(string, string))
-  print(query)
+  logger.log(log, query)
 
   if mysql_query(conn, query) ~= 0 then
     return rows, string.copy(mysql_error(conn))

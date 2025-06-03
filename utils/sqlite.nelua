@@ -1,5 +1,6 @@
 require "..libs.sqlite"
-local base = require ".base"
+
+local logger = require ".logger"
 
 local M = @record{}
 
@@ -57,9 +58,9 @@ function M.rollback(db: *sqlite3)
   return ""
 end
 
-function M.query(db: *sqlite3, sql: string): (sequence(hashmap(string, string)), string)
+function M.query(log: logger.NotSetOrBool, db: *sqlite3, sql: string): (sequence(hashmap(string, string)), string)
   local rows: sequence(hashmap(string, string))
-  print(sql)
+  logger.log(log, sql)
   local stmt: *sqlite3_stmt
   local rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nilptr)
   if rc ~= SQLITE_OK then

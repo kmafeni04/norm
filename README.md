@@ -74,7 +74,8 @@ local norm.Config = @record{
       host: string,
       port: uinteger
     }
-  }
+  },
+  log: logger.NotSetOrBool
 }
 ```
 
@@ -89,7 +90,8 @@ local norm.Db = @record{
     sqlite_db: *sqlite.type,
     pg_db: *pg.type,
     mysql_db: *mysql.type
-  }
+  },
+  log: logger.NotSetOrBool
 }
 ```
 
@@ -466,6 +468,36 @@ Cleans up memory for rows returned from running sql queries
 
 ```lua
 function base.destroy_rows(rows: sequence(hashmap(string, string)))
+```
+
+## logger.nelua
+
+### logger record
+
+The logger module
+
+```lua
+local logger = @record{}
+```
+
+### logger.NotSetOrBool
+
+Used to determine if the logger should print to console or not
+
+```lua
+local logger.NotSetOrBool = @enum{
+  NOT_SET = 0,
+  TRUE,
+  FALSE
+}
+```
+
+### logger.log
+
+If the `log` is not set or set to true, will print `s`
+
+```lua
+function logger.log(log: logger.NotSetOrBool, s: string)
 ```
 
 ---

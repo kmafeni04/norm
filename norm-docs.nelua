@@ -20,6 +20,8 @@ gen:add_file("./norm.nelua")
 
 gen:add_file("./utils/base.nelua")
 
+gen:add_file("./utils/logger.nelua")
+
 gen:add([[
 ---
 

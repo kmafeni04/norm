@@ -5,6 +5,7 @@ local base = require ".utils.base"
 local sqlite = require ".utils.sqlite"
 local pg = require ".utils.pg"
 local mysql = require ".utils.mysql"
+local logger = require ".utils.logger"
 
 --- ### norm
 --- The norm module
@@ -64,7 +65,8 @@ local norm.Config = @record{
       host: string,
       port: uinteger
     }
-  }
+  },
+  log: logger.NotSetOrBool
 }
 ---`
 
@@ -77,7 +79,8 @@ local norm.Db = @record{
     sqlite_db: *sqlite.type,
     pg_db: *pg.type,
     mysql_db: *mysql.type
-  }
+  },
+  log: logger.NotSetOrBool
 }
 ---`
 
@@ -95,7 +98,7 @@ function norm.Db.new(conf: norm.Config): (norm.Db, string)
     case norm.DbKind.sqlite then
       local sqlite_db, err = sqlite.new(conf.conn.sqlite.name)
       if err ~= "" then return {}, err end
-      return {kind = conf.kind, conn = {sqlite_db = sqlite_db}}, ""
+      return {kind = conf.kind, conn = {sqlite_db = sqlite_db}, log = conf.log}, ""
     case norm.DbKind.pg then
       local info = conf.conn.pg
       info.user = info.user ~= "" and info.user or "postgres"
@@ -104,7 +107,7 @@ function norm.Db.new(conf: norm.Config): (norm.Db, string)
       local conn_info = ("dbname=%s user=%s password=%s host=%s port=%s"):format(info.name, info.user, info.password, info.host, info.port)
       local pg_db, err = pg.new(conn_info)
       if err ~= "" then return {}, err end
-      return {kind = conf.kind, conn= {pg_db = pg_db}}, ""
+      return {kind = conf.kind, conn= {pg_db = pg_db}, log = conf.log}, ""
     case norm.DbKind.mysql then
       local info = conf.conn.mysql
       info.user = info.user ~= "" and info.user or "root"
@@ -112,7 +115,7 @@ function norm.Db.new(conf: norm.Config): (norm.Db, string)
       info.port = info.port ~= 0 and info.port or 3306
       local mysql_db, err = mysql.new(info.host, info.user, info.password, info.name, info.port)
       if err ~= "" then return {}, err end
-      return {kind = conf.kind, conn= {mysql_db = mysql_db}}, ""
+      return {kind = conf.kind, conn= {mysql_db = mysql_db}, log = conf.log}, ""
   end
   return {}, "UNREACHABLE DB NEW"
 end
@@ -142,11 +145,11 @@ function norm.Db:query(sql: string): (sequence(hashmap(string, string)), string)
 ---`
   switch self.kind do
     case norm.DbKind.sqlite then
-      return sqlite.query(self.conn.sqlite_db, sql)
+      return sqlite.query(self.log, self.conn.sqlite_db, sql)
     case norm.DbKind.pg then
-      return pg.query(self.conn.pg_db, sql)
+      return pg.query(self.log, self.conn.pg_db, sql)
     case norm.DbKind.mysql then
-      return mysql.query(self.conn.mysql_db, sql)
+      return mysql.query(self.log, self.conn.mysql_db, sql)
   end
   return {}, "UNREACHABLE QUERY"
 end
@@ -484,7 +487,7 @@ local function db_migrate(db: norm.Db, migrated: hashmap(string, boolean), migra
   end
   for _, v in ipairs(migrations) do
     if not migrated:has(v.name) then
-      print("Migrating: " .. v.name)
+      logger.log(db.log, "Migrating: " .. v.name)
       local vals: hashmap(string, string)
       vals["migration"] = v.name
       db:insert("norm_migrations", vals)
@@ -505,30 +508,30 @@ local function db_commit_or_rollback(db: norm.Db, err: string, ran_migrations: u
   switch db.kind do
     case norm.DbKind.sqlite then
       if err ~= "" then
-        print("Failed to migrate: " .. err)
+        logger.log(db.log, "Failed to migrate: " .. err)
         sqlite.rollback(db.conn.sqlite_db)
-        print("Rolling back")
+        logger.log(db.log, "Rolling back")
       else
         sqlite.commit(db.conn.sqlite_db)
-        print(("Ran %d migrations"):format(ran_migrations))
+        logger.log(db.log, ("Ran %d migrations"):format(ran_migrations))
       end
     case norm.DbKind.pg then
       if err ~= "" then
-        print("Failed to migrate: " .. err)
+        logger.log(db.log, "Failed to migrate: " .. err)
         pg.rollback(db.conn.pg_db)
-        print("Rolling back")
+        logger.log(db.log, "Rolling back")
       else
         pg.commit(db.conn.pg_db)
-        print(("Ran %d migrations"):format(ran_migrations))
+        logger.log(db.log, ("Ran %d migrations"):format(ran_migrations))
       end
     case norm.DbKind.mysql then
       if err ~= "" then
-        print("Failed to migrate: " .. err)
+        logger.log(db.log, "Failed to migrate: " .. err)
         mysql.rollback(db.conn.mysql_db)
-        print("Rolling back")
+        logger.log(db.log, "Rolling back")
       else
         mysql.commit(db.conn.mysql_db)
-        print(("Ran %d migrations"):format(ran_migrations))
+        logger.log(db.log, ("Ran %d migrations"):format(ran_migrations))
       end
     else
       err = "UNKONWN DB KIND"
@@ -746,9 +749,9 @@ If no error occurs, the string is empty
 ---`
 function norm.migrate(db: norm.Db, migrations: sequence(norm.Schema.Migration)): string
 ---`
-  print("Running migrations")
+  logger.log(db.log, "Running migrations")
   if not db:table_exists("norm_migrations") then
-    print("Creating migrations table")
+    logger.log(db.log, "Creating migrations table")
     local err = norm.Schema.create_table(db, "norm_migrations", {
       {"migration", norm.Schema.ColumnType.varchar, { primary_key = true }}
     })
