@@ -84,6 +84,10 @@ function M.query(log: logger.NotSetOrBool, db: *sqlite3, sql: string): (sequence
     rows:push(cols)
   end
 
+  if rc ~= SQLITE_DONE then
+    return rows, ("SQLite error: %s"):format(sqlite3_errmsg(db))
+  end
+
   return rows, ""
 end
 

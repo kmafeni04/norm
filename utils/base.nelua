@@ -12,14 +12,27 @@ local base = @record{}
 ---`
 function base.escape_identifier(s: string)
 ---`
+  if s == "" then
+    return s
+  end
   return '"' .. (s:gsub('"', '""')) .. '"'
 end
 
 --- ### base.escape_literal
---- Escapes a string `s` so it can be used as a literal in sql queries
+--[[-
+Escapes a string `s` so it can be used as a literal in sql queries
+If the whole of `s` matches an integer or float, it is not escaped
+-]]
 ---`
 function base.escape_literal(s: string)
 ---`
+  if s == "" then
+    return s
+  end
+  local num_match = s:match("^%d+%.?%d*")
+  if num_match then
+    return s
+  end
  return "'" .. (s:gsub("'", "''")) .. "'"
 end
 

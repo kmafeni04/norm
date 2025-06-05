@@ -1,0 +1,96 @@
+require "string"
+require "hashmap"
+
+local inflect = @record{}
+
+function inflect.pluralize(singular: string): string
+  -- Special cases first
+  local irregular:hashmap(string, string)
+  irregular["child"] = "children"
+  irregular["goose"] = "geese"
+  irregular["man"] = "men"
+  irregular["woman"] = "women"
+  irregular["tooth"] = "teeth"
+  irregular["foot"] = "feet"
+  irregular["mouse"] = "mice"
+  irregular["person"] = "people"
+
+  -- Check for irregular forms
+  if irregular:has(singular) then
+      return irregular[singular]
+  end
+
+  -- Rules in decreasing order of precedence
+
+  -- Words ending in 'y' preceded by a consonant
+  if singular:match("([^aeiou])y$") then
+      return singular:gsub("y$", "ies")
+  end
+
+  -- Words ending in 's', 'x', 'z', 'ch', 'sh'
+  if singular:match("s$") or singular:match("x$") or singular:match("z$") or
+     singular:match("ch$") or singular:match("sh$") then
+      return singular .. "es"
+  end
+
+  -- Words ending in 'f' or 'fe'
+  if singular:match("f$") then
+      return singular:gsub("f$", "ves")
+  end
+  if singular:match("fe$") then
+      return singular:gsub("fe$", "ves")
+  end
+
+  -- Default rule: add 's'
+  return singular .. "s"
+end
+
+function inflect.depluralize(plural: string): string
+  -- Special cases first
+  local irregular:hashmap(string, string)
+  irregular["children"] = "child"
+  irregular["geese"] = "goose"
+  irregular["men"] = "man"
+  irregular["women"] = "woman"
+  irregular["teeth"] = "tooth"
+  irregular["feet"] = "foot"
+  irregular["mice"] = "mouse"
+  irregular["people"] = "person"
+
+  -- Check for irregular forms
+  if irregular:has(plural) then
+      return irregular[plural]
+  end
+
+  -- Rules in decreasing order of precedence
+
+  -- Words ending in 'ies' -> 'y' (only if preceded by a consonant)
+  if plural:match("([^aeiou])ies$") then
+      return plural:gsub("ies$", "y")
+  end
+
+  -- Words ending in 'ves' -> 'f' or 'fe'
+  if plural:match("ves$") then
+    local base = plural:gsub("ves$", "")
+    -- Try 'fe' ending first (e.g., 'wives' -> 'wife')
+    if base .. "fe" == "wife" or base .. "fe" == "knife" or base .. "fe" == "life" then
+      return base .. "fe"
+    end
+    return base .. "f"
+  end
+
+  -- Words ending in 'es' -> remove 'es' if preceded by certain consonant clusters
+  if plural:match("(s|x|z|ch|sh)es$") then
+      return plural:gsub("es$", "")
+  end
+
+  -- Regular 's' ending -> remove 's'
+  if plural:match("s$") and not plural:match("ss$") then
+      return plural:sub(1, #plural - 1)
+  end
+
+  -- If no rule matched, return the original word
+  return plural
+end
+
+return inflect
