@@ -1,3 +1,8 @@
+--[[
+  TODO:
+    - Implement relations: [belongs_to, has_one, has_many]
+    - Implement ModelOpts: [primary_keys, relations]
+]]
 --- ## norm.nelua
 require "io"
 
@@ -80,7 +85,8 @@ local norm.Db = @record{
     pg_db: *pg.type,
     mysql_db: *mysql.type
   },
-  log: logger.NotSetOrBool
+  log: logger.NotSetOrBool,
+  models: hashmap(string, pointer) -- norm.Model
 }
 ---`
 
@@ -770,7 +776,7 @@ end
 ---`
 local norm.Model = @record{
   db: norm.Db,
-  name: string,
+  tbl_name: string,
 }
 ---`
 
@@ -781,8 +787,7 @@ This is meant to represent a single row in a model's table
 -]]
 ---`
 local norm.Model.Inst = @record{
-  db: norm.Db,
-  tbl_name: string,
+  parent: *norm.Model,
   row: hashmap(string, string)
 }
 ---`
@@ -793,15 +798,24 @@ This function runs all `migrations`, returning a new [norm.Model](#normmodel) ob
 If no error occurs, the string is empty
 -]]
 ---`
-function norm.Model.new(db: norm.Db, name: string): (norm.Model, string)
+function norm.Model.new(db: norm.Db, tbl_name: string, model_name: string): (*norm.Model, string)
 ---`
-  if not db:table_exists(name) then
-    return {}, ("Table `%s` does not exist in the database"):format((name))
+  if model_name == "" then
+    return nilptr, "Model name can not be empty"
   end
-  return {
+  if db.models:has(model_name) then
+    return nilptr, "Model name already exists on this Db instance"
+  end
+  if not db:table_exists(tbl_name) then
+    return nilptr, ("Table `%s` does not exist in the database"):format((tbl_name))
+  end
+  local model = new(norm.Model)
+  $model = {
     db = db,
-    name = name
-  }, ""
+    tbl_name = tbl_name
+  }
+  db.models[model_name] = model
+  return model, ""
 end
 
 --- ### norm.Model:find
@@ -813,7 +827,7 @@ If no error occurs, the string is empty
 function norm.Model:find(conditions: hashmap(string, string)): (norm.Model.Inst, string)
 ---`
   local sb: stringbuilder
-  sb:writef("SELECT * FROM %s ", norm.escape_identifier(self.name))
+  sb:writef("SELECT * FROM %s ", norm.escape_identifier(self.tbl_name))
   local row: hashmap(string, string)
   if next(conditions) then
     sb:write(" WHERE ")
@@ -829,8 +843,7 @@ function norm.Model:find(conditions: hashmap(string, string)): (norm.Model.Inst,
   end
   row = rows[1]
   return {
-    db = self.db,
-    tbl_name = self.name,
+    parent = self,
     row = row
   }, ""
 end
@@ -843,7 +856,7 @@ If no error occurs, the string is empty
 ---`
 function norm.Model:select(conditions: hashmap(string, string)): (sequence(norm.Model.Inst), string)
 ---`
-  local sql = "* FROM " .. norm.escape_identifier(self.name)
+  local sql = "* FROM " .. norm.escape_identifier(self.tbl_name)
   local result: sequence(norm.Model.Inst)
   local rows, err = self.db:select(sql, conditions)
   if err ~= "" then
@@ -854,8 +867,7 @@ function norm.Model:select(conditions: hashmap(string, string)): (sequence(norm.
   end
   for _, row in ipairs(rows) do
     result:push({      
-      db = self.db,
-      tbl_name = self.name,
+      parent = self,
       row = row
     })
   end
@@ -874,7 +886,7 @@ function norm.Model:create(values: hashmap(string, string), returning: facultati
   ## if not returning.type.is_string then
     local returning = "*"
   ## end
-  local rows, err = self.db:insert(self.name, values, returning)
+  local rows, err = self.db:insert(self.tbl_name, values, returning)
   if err ~= "" then
     return {}, err
   end
@@ -882,8 +894,7 @@ function norm.Model:create(values: hashmap(string, string), returning: facultati
     return {}, "No rows were found with the query"
   end
   return {      
-    db = self.db,
-    tbl_name = self.name,
+    parent = self,
     row = rows[1]
   }, ""
 end
@@ -900,16 +911,15 @@ function norm.Model.Inst:update(values: hashmap(string, string), returning: facu
   ## if not returning.type.is_string then
     local returning = "*"
   ## end
-  local rows, err = self.db:update(self.tbl_name, values, self.row, returning)
+  local rows, err = self.parent.db:update(self.parent.tbl_name, values, self.row, returning)
   if err ~= "" then
     return {}, err
   end
   if #rows < 1 then
     return {}, "No rows were found with the query"
   end
-  return {      
-    db = self.db,
-    tbl_name = self.tbl_name,
+  return {
+    parent = self.parent,
     row = rows[1]
   }, ""
 end
@@ -922,7 +932,7 @@ If no error occurs, the string is empty
 ---`
 function norm.Model.Inst:delete(): string
 ---`
-  return self.db:delete(self.tbl_name, self.row)
+  return self.parent.db:delete(self.parent.tbl_name, self.row)
 end
 
 --- ### norm.Model.Inst:get_col

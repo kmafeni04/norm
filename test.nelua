@@ -57,20 +57,18 @@ local err = norm.migrate(db, {
             {"id", type.integer, { primary_key = true }},
             {"name", type.text, { unique = true }},
             {"age", type.integer}
-          }, [["created_at" TEXT NOT NULL DEFAULT (date('now'))]])
+          })
         case norm.DbKind.pg then
           err = schema.create_table(db, "users", {
             {"id", type.serial, { primary_key = true }},
             {"name", type.text, { unique = true }},
             {"age", type.integer},
-            {"created_at", type.date}
           })
         case norm.DbKind.mysql then
           err = schema.create_table(db, "users", {
             {"id", type.id, { primary_key = true }},
             {"name", type.text, { unique = true }},
             {"age", type.integer},
-            {"created_at", type.date}
           })
         else
           err = "UNKONWN DB kind for migration 1"
@@ -178,7 +176,7 @@ local rows, err = db:select("* FROM users", users_select)
 assert(err == "", err)
 
 local model = norm.Model
-local Users, err = model.new(db, "users")
+local Users, err = model.new(db, "users", "Users")
 assert(err == "", err)
 
 local users_create: hashmap(string, string)
@@ -186,7 +184,6 @@ users_create["name"] = "James"
 users_create["age"] = "21"
 local user, err = Users:create(users_create)
 assert(err == "", err)
-print(user:get_col("created_at"))
 
 local users_update: hashmap(string, string)
 users_update["name"] = "John"
