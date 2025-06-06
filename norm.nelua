@@ -1,7 +1,7 @@
 --[[
   TODO:
     - Implement relations: [belongs_to, has_one, has_many]
-    - Implement ModelOpts: [primary_keys, relations]
+    - Implement ModelOpts: [relations]
 ]]
 --- ## norm.nelua
 require "io"
@@ -771,6 +771,10 @@ function norm.migrate(db: norm.Db, migrations: sequence(norm.Schema.Migration)):
   return db_commit_or_rollback(db, err, ran_migrations)
 end
 
+local norm.ModelOpts = @record{
+  primary_keys: sequence(string)
+}
+
 --- ### norm.Model
 --- This is used to interact with a particular table directly with more specific functions
 ---`
@@ -798,7 +802,7 @@ This function runs all `migrations`, returning a new [norm.Model](#normmodel) ob
 If no error occurs, the string is empty
 -]]
 ---`
-function norm.Model.new(db: norm.Db, tbl_name: string, model_name: string): (*norm.Model, string)
+function norm.Model.new(db: norm.Db, tbl_name: string, model_name: string, opts: norm.ModelOpts): (*norm.Model, string)
 ---`
   if model_name == "" then
     return nilptr, "Model name can not be empty"
@@ -810,6 +814,12 @@ function norm.Model.new(db: norm.Db, tbl_name: string, model_name: string): (*no
     return nilptr, ("Table `%s` does not exist in the database"):format((tbl_name))
   end
   local model = new(norm.Model)
+  local primary_keys: sequence(string)
+  if #opts.primary_keys < 1 then
+    primary_keys:push("id")
+  else
+    primary_keys = opts.primary_keys
+  end
   $model = {
     db = db,
     tbl_name = tbl_name
