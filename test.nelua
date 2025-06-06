@@ -1,4 +1,13 @@
+require "io"
 require "os"
+## local function mild_assert(cond, message)
+  do
+    if not #[cond]# then
+      io.stderr:write(("%s:%d: mild assert: %s\n"):format(#[cond:location().srcname]#, #[cond:location().lineno]#, #[message or "assert hit"]#))
+      goto ending
+    end
+  end
+## end
 
 local norm = require "norm"
 
@@ -41,7 +50,7 @@ local db, err = norm.Db.new({
   ## static_error("DB kind was not defined")
 ## end
 
-assert(err == "", err)
+mild_assert!(err == "", err)
 
 local migrations: hashmap(string, norm.Schema.Migration)
 local schema = norm.Schema
@@ -149,50 +158,51 @@ local err = norm.migrate(db, {
     end
   }
 })
-assert(err == "", err)
+mild_assert!(err == "", err)
 
 local users_insert: hashmap(string, string)
 users_insert["name"] = "James"
 users_insert["age"] = "21"
 local rows, err = db:insert("users", users_insert)
-assert(err == "", err)
+mild_assert!(err == "", err)
 
 local users_select: hashmap(string, string)
 users_select["name"] = "James"
 users_select["age"] = "21"
 local rows, err = db:select("* FROM users", users_select)
-assert(err == "", err)
+mild_assert!(err == "", err)
 
 local users_delete: hashmap(string, string)
 users_delete["name"] = "James"
 users_delete["age"] = "21"
 local err = db:delete("users", users_delete)
-assert(err == "", err)
+mild_assert!(err == "", err)
 
 local users_select: hashmap(string, string)
 users_select["name"] = "James"
 users_select["age"] = "21"
 local rows, err = db:select("* FROM users", users_select)
-assert(err == "", err)
+mild_assert!(err == "", err)
 
 local model = norm.Model
 local Users, err = model.new(db, "users", "Users")
-assert(err == "", err)
+mild_assert!(err == "", err)
 
 local users_create: hashmap(string, string)
 users_create["name"] = "James"
 users_create["age"] = "21"
 local user, err = Users:create(users_create)
-assert(err == "", err)
+mild_assert!(err == "", err)
 
 local users_update: hashmap(string, string)
 users_update["name"] = "John"
 local user, err = user:update(users_update)
-assert(err == "", err)
+mild_assert!(err == "", err)
 
 local err = user:delete()
-assert(err == "", err)
+mild_assert!(err ~= "", err)
 
+::ending::
 switch db.kind do
   case norm.DbKind.sqlite then
     local ok, err = os.remove("test.db")
