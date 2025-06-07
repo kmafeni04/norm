@@ -215,6 +215,12 @@ function norm.Db:insert(
     returning: facultative(string)
   ): (sequence(hashmap(string, string)), string)
 ---`
+  if tbl_name == "" then
+    return {}, "`tbl_name` can not be an empty string"
+  end
+  if not next(values) then
+    return {}, "`values` can not be an empty hashmap"
+  end
   local sb: stringbuilder
   sb:writef("INSERT INTO %s (", norm.escape_identifier(tbl_name))
   for k in pairs(values) do
@@ -269,6 +275,12 @@ function norm.Db:update(
     returning: facultative(string)
   ): (sequence(hashmap(string, string)), string)
 ---`
+  if tbl_name == "" then
+    return {}, "`tbl_name` can not be an empty string"
+  end
+  if not next(values) then
+    return {}, "`values` can not be an empty hashmap"
+  end
   local sb: stringbuilder
   sb:writef("UPDATE %s SET ", norm.escape_identifier(tbl_name))
   for k, v in pairs(values) do
@@ -323,6 +335,12 @@ If `returning` is not set, and empty sequence is returned
 ---`
 function norm.Db:delete(tbl_name: string, conditions: hashmap(string, string)): string
 ---`
+  if tbl_name == "" then
+    return "`tbl_name` can not be an empty string"
+  end
+  if not next(conditions) then
+    return "`conditions` can not be an empty hashmap"
+  end
   local sb: stringbuilder
   sb:writef("DELETE FROM %s WHERE ", norm.escape_identifier(tbl_name))
   for k, v in pairs(conditions) do
@@ -864,13 +882,13 @@ function norm.Model:find(conditions: hashmap(string, string)): (norm.Model.Inst,
   sb:writef("SELECT * FROM %s ", norm.escape_identifier(self.tbl_name))
   local row: hashmap(string, string)
   if next(conditions) then
-    sb:write(" WHERE ")
+    sb:write("WHERE ")
     for k, v in pairs(conditions) do
       sb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
     end
-    sb:rollback(#(" AND "))
+    sb:rollback(#("AND "))
   end
-  sb:write(" LIMIT 1")
+  sb:write("LIMIT 1")
   local rows, err = self.db:query(sb:promote())
   if err ~= "" then
     return {}, err
@@ -917,6 +935,9 @@ If no error occurs, the string is empty
 ---`
 function norm.Model:create(values: hashmap(string, string), returning: facultative(string)): (norm.Model.Inst, string)
 ---`
+  if not next(values) then
+    return {}, "`values` can not be an empty hashmap"
+  end
   ## if not returning.type.is_string then
     local returning = "*"
   ## end
@@ -989,10 +1010,10 @@ function norm.Model.Inst:get_col(name: string): (string, string)
     return "", "This model instance's parent does not exist"
   end
   local ok, v = self.row:has_and_get(name)
-  if ok then
-    return v, ""
+  if not ok then
+    return "", ("name `%s` does not exist in row"):format(name)
   end
-  return "", "Name does not exist in row"
+  return v, "" 
 end
 
 function norm.Model.Inst:get_belongs_to(rel_name: string): (norm.Model.Inst, string)
