@@ -394,37 +394,30 @@ local function schema_type_tostring(db_kind: norm.DbKind, st: norm.Schema.Column
   switch st do
     case norm.Schema.ColumnType.integer then
       sb:write("INTEGER ")
-      if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
     case norm.Schema.ColumnType.serial then
       if db_kind ~= norm.DbKind.pg then
         return "", "serial type is only available in postgres"
       end
       sb:write("SERIAL ")
-      if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
     case norm.Schema.ColumnType.id then
       if db_kind ~= norm.DbKind.mysql then
         return "", "id type is only available in mysql"
       end
       sb:write("INTEGER AUTO_INCREMENT ")
-      if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
     case norm.Schema.ColumnType.timestamp then
       if db_kind ~= norm.DbKind.mysql and db_kind ~= norm.DbKind.pg then
         return "", "timestamp type is only available in mysql and postgres"
       end
       sb:write("TIMESTAMP ")
-      if opts.default_val == "" and not opts.primary_key then opts.default_val = "CURRENT_TIMESTAMP" end
     case norm.Schema.ColumnType.date then
       if db_kind ~= norm.DbKind.mysql and db_kind ~= norm.DbKind.pg then
         return "", "date type is only available in mysql and postgres"
       end
       sb:write("DATE ")
-      if opts.default_val == "" and not opts.primary_key then opts.default_val = "CURRENT_DATE" end
     case norm.Schema.ColumnType.numeric then
       sb:write("NUMERIC ")
-      if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
     case norm.Schema.ColumnType.real then
       sb:write("REAL ")
-      if opts.default_val == "" and not opts.primary_key then opts.default_val = "0" end
     case norm.Schema.ColumnType.text then
       sb:write("TEXT ")
     case norm.Schema.ColumnType.varchar then
