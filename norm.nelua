@@ -954,50 +954,6 @@ function norm.Model:create(values: hashmap(string, string), returning: facultati
   }, ""
 end
 
--- FIX: switch self.row to just use primary_key
---- ### norm.Model.Inst:update
---[[-
-This function updates the row instance with `values` into the model's table, returning a [norm.model.Inst](#normmodelinst) object and an error string
-If `returning` is not set, and empty object is returned
-If no error occurs, the string is empty
--]]
----`
-function norm.Model.Inst:update(values: hashmap(string, string), returning: facultative(string)): (norm.Model.Inst, string)
----`
-  if not self.parent then
-    return {}, "This model instance's parent does not exist"
-  end
-  ## if not returning.type.is_string then
-    local returning = "*"
-  ## end
-  local rows, err = self.parent.db:update(self.parent.tbl_name, values, self.row, returning)
-  if err ~= "" then
-    return {}, err
-  end
-  if #rows < 1 then
-    return {}, "No rows were found with the query"
-  end
-  return {
-    parent = self.parent,
-    row = rows[1]
-  }, ""
-end
-
--- FIX: switch self.row to just use primary_key
---- ### norm.Model.Inst:delete
---[[-
-This function deletes the row instance from the model's table, returning an error string
-If no error occurs, the string is empty
--]]
----`
-function norm.Model.Inst:delete(): string
----`
-  if not self.parent then
-    return "This model instance's parent does not exist"
-  end
-  return self.parent.db:delete(self.parent.tbl_name, self.row)
-end
-
 --- ### norm.Model.Inst:get_col
 --[[-
 This function get's the value of the col by `name` if it exists, returning the value and an error string
@@ -1014,6 +970,60 @@ function norm.Model.Inst:get_col(name: string): (string, string)
     return "", ("name `%s` does not exist in row"):format(name)
   end
   return v, "" 
+end
+
+--- ### norm.Model.Inst:update
+--[[-
+This function updates the row instance with `values` into the model's table, returning a [norm.model.Inst](#normmodelinst) object and an error string
+If `returning` is not set, and empty object is returned
+If no error occurs, the string is empty
+-]]
+---`
+function norm.Model.Inst:update(values: hashmap(string, string), returning: facultative(string)): (norm.Model.Inst, string)
+---`
+  if not self.parent then
+    return {}, "This model instance's parent does not exist"
+  end
+  ## if not returning.type.is_string then
+    local returning = "*"
+  ## end
+  local id, err = self:get_col(self.parent.primary_keys[1])
+  if err ~= "" then
+    return {}, "Could not match primary key in model: " .. err
+  end
+  local conds: hashmap(string, string)
+  conds[self.parent.primary_keys[1]] = id
+  local rows, err = self.parent.db:update(self.parent.tbl_name, values, conds, returning)
+  if err ~= "" then
+    return {}, err
+  end
+  if #rows < 1 then
+    return {}, "No rows were found with the query"
+  end
+  return {
+    parent = self.parent,
+    row = rows[1]
+  }, ""
+end
+
+--- ### norm.Model.Inst:delete
+--[[-
+This function deletes the row instance from the model's table, returning an error string
+If no error occurs, the string is empty
+-]]
+---`
+function norm.Model.Inst:delete(): string
+---`
+  if not self.parent then
+    return "This model instance's parent does not exist"
+  end
+  local id, err = self:get_col(self.parent.primary_keys[1])
+  if err ~= "" then
+    return "Could not match primary key in model: " .. err
+  end
+  local conds: hashmap(string, string)
+  conds[self.parent.primary_keys[1]] = id
+  return self.parent.db:delete(self.parent.tbl_name, conds)
 end
 
 function norm.Model.Inst:get_belongs_to(rel_name: string): (norm.Model.Inst, string)
