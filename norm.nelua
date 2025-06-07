@@ -775,12 +775,18 @@ local norm.ModelOpts = @record{
   primary_keys: sequence(string)
 }
 
+local ModelImpl = @record{
+  db: *norm.Db,
+  model_name: string,
+  tbl_name: string,
+  primary_keys: sequence(string)
+}
+
 --- ### norm.Model
 --- This is used to interact with a particular table directly with more specific functions
 ---`
 local norm.Model = @record{
-  db: norm.Db,
-  tbl_name: string,
+  impl: *ModelImpl
 }
 ---`
 
@@ -802,30 +808,44 @@ This function runs all `migrations`, returning a new [norm.Model](#normmodel) ob
 If no error occurs, the string is empty
 -]]
 ---`
-function norm.Model.new(db: norm.Db, tbl_name: string, model_name: string, opts: norm.ModelOpts): (*norm.Model, string)
+function norm.Model.new(db: *norm.Db, tbl_name: string, model_name: string, opts: norm.ModelOpts): (norm.Model, string)
 ---`
+  if not db then
+    return {}, "db can not be a nilptr"
+  end
   if model_name == "" then
-    return nilptr, "Model name can not be empty"
+    return {}, "Model name can not be empty"
   end
   if db.models:has(model_name) then
-    return nilptr, "Model name already exists on this Db instance"
+    return {}, "Model name already exists on this Db instance"
   end
   if not db:table_exists(tbl_name) then
-    return nilptr, ("Table `%s` does not exist in the database"):format((tbl_name))
+    return {}, ("Table `%s` does not exist in the database"):format((tbl_name))
   end
-  local model = new(norm.Model)
   local primary_keys: sequence(string)
   if #opts.primary_keys < 1 then
     primary_keys:push("id")
   else
     primary_keys = opts.primary_keys
   end
-  $model = {
+  local model_impl = new(ModelImpl)
+  $model_impl = {
     db = db,
-    tbl_name = tbl_name
+    model_name = model_name,
+    tbl_name = tbl_name,
+    primary_keys = primary_keys,
   }
-  db.models[model_name] = model
-  return model, ""
+  db.models[model_name] = model_impl
+  return {
+    impl = model_impl
+  }, ""
+end
+
+function norm.Model:destroy()
+  if not self.impl then return end
+  self.impl.db.models:remove(self.impl.model_name)
+  delete(self.impl)
+  self.impl = nilptr
 end
 
 --- ### norm.Model:find
@@ -836,8 +856,11 @@ If no error occurs, the string is empty
 ---`
 function norm.Model:find(conditions: hashmap(string, string)): (norm.Model.Inst, string)
 ---`
+  if not self.impl then
+    return {}, "This model does not exist"
+  end
   local sb: stringbuilder
-  sb:writef("SELECT * FROM %s ", norm.escape_identifier(self.tbl_name))
+  sb:writef("SELECT * FROM %s ", norm.escape_identifier(self.impl.tbl_name))
   local row: hashmap(string, string)
   if next(conditions) then
     sb:write(" WHERE ")
@@ -847,7 +870,7 @@ function norm.Model:find(conditions: hashmap(string, string)): (norm.Model.Inst,
     sb:rollback(#(" AND "))
   end
   sb:write(" LIMIT 1")
-  local rows, err = self.db:query(sb:promote())
+  local rows, err = self.impl.db:query(sb:promote())
   if err ~= "" then
     return {}, err
   end
@@ -866,9 +889,12 @@ If no error occurs, the string is empty
 ---`
 function norm.Model:select(conditions: hashmap(string, string)): (sequence(norm.Model.Inst), string)
 ---`
-  local sql = "* FROM " .. norm.escape_identifier(self.tbl_name)
+  if not self.impl then
+    return {}, "This model does not exist"
+  end
+  local sql = "* FROM " .. norm.escape_identifier(self.impl.tbl_name)
   local result: sequence(norm.Model.Inst)
-  local rows, err = self.db:select(sql, conditions)
+  local rows, err = self.impl.db:select(sql, conditions)
   if err ~= "" then
     return {}, err
   end
@@ -893,10 +919,13 @@ If no error occurs, the string is empty
 ---`
 function norm.Model:create(values: hashmap(string, string), returning: facultative(string)): (norm.Model.Inst, string)
 ---`
+  if not self.impl then
+    return {}, "This model does not exist"
+  end
   ## if not returning.type.is_string then
     local returning = "*"
   ## end
-  local rows, err = self.db:insert(self.tbl_name, values, returning)
+  local rows, err = self.impl.db:insert(self.impl.tbl_name, values, returning)
   if err ~= "" then
     return {}, err
   end
@@ -918,10 +947,13 @@ If no error occurs, the string is empty
 ---`
 function norm.Model.Inst:update(values: hashmap(string, string), returning: facultative(string)): (norm.Model.Inst, string)
 ---`
+  if not self.parent.impl then
+    return {}, "This model instance's parent does not exist"
+  end
   ## if not returning.type.is_string then
     local returning = "*"
   ## end
-  local rows, err = self.parent.db:update(self.parent.tbl_name, values, self.row, returning)
+  local rows, err = self.parent.impl.db:update(self.parent.impl.tbl_name, values, self.row, returning)
   if err ~= "" then
     return {}, err
   end
@@ -942,7 +974,10 @@ If no error occurs, the string is empty
 ---`
 function norm.Model.Inst:delete(): string
 ---`
-  return self.parent.db:delete(self.parent.tbl_name, self.row)
+  if not self.parent.impl then
+    return "This model instance's parent does not exist"
+  end
+  return self.parent.impl.db:delete(self.parent.impl.tbl_name, self.row)
 end
 
 --- ### norm.Model.Inst:get_col
@@ -953,6 +988,9 @@ If no error occurs, the string is empty
 ---`
 function norm.Model.Inst:get_col(name: string): (string, string)
 ---`
+  if not self.parent.impl then
+    return "", "This model instance's parent does not exist"
+  end
   local ok, v = self.row:has_and_get(name)
   if ok then
     return v, ""

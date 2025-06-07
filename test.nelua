@@ -1,9 +1,10 @@
 require "io"
 require "os"
+
 ## local function mild_assert(cond, message)
   do
     if not #[cond]# then
-      io.stderr:write(("%s:%d: mild assert: %s\n"):format(#[cond:location().srcname]#, #[cond:location().lineno]#, #[message or "assert hit"]#))
+      io.stderr:write(("\27[1m%s:%d: \27[31mmild assert\27[0m: %s\27[0m\n"):format(#[cond:location().srcname]#, #[cond:location().lineno]#, #[message or "assert hit"]#))
       goto ending
     end
   end
@@ -200,7 +201,7 @@ local user, err = user:update(users_update)
 mild_assert!(err == "", err)
 
 local err = user:delete()
-mild_assert!(err ~= "", err)
+mild_assert!(err == "", err)
 
 ::ending::
 switch db.kind do
