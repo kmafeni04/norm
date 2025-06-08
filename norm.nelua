@@ -10,6 +10,7 @@ local sqlite = require ".utils.sqlite"
 local pg = require ".utils.pg"
 local mysql = require ".utils.mysql"
 local logger = require ".utils.logger"
+local inflect = require "utils.inflect"
 
 --- ### norm
 --- The norm module
@@ -1053,6 +1054,40 @@ function norm.Model.Inst:get_belongs_to(rel_name: string): (norm.Model.Inst, str
       local model = (@*norm.Model)(model_ptr)
       local where: hashmap(string, string)
       where[model.primary_keys[1]] = id
+      return model:find(where)
+    end
+  end
+
+  return {}, ("A matching relation was not found for `%s`"):format(rel_name)
+end
+
+function norm.Model.Inst:get_has_one(rel_name: string): (norm.Model.Inst, string)
+  if not self.parent then
+    return {}, "This model instance's parent does not exist"
+  end
+  for _, rel in ipairs(self.parent.rels) do
+    if rel.rel.name == rel_name and rel.kind == norm.RelationKind.has_one then
+      local rel = rel.rel
+      local key: string
+      if rel.key ~= "" then
+        key = rel.key
+      else
+        key = inflect.depluralize(self.parent.tbl_name) .. "_id"
+      end
+      local id, err = self:get_col(self.parent.primary_keys[1])
+      if err ~= "" then
+        return {}, "Could not find key on instance table: " .. err
+      end
+      local ok, model_ptr = self.parent.db.models:has_and_get(rel.model_name)
+      if not ok then
+        return {}, ("Realtion's model `%s` does not exist on this db instance"):format(rel.model_name)
+      end
+      if not model_ptr then
+        return {}, ("Model `%s` in db instance is a nilptr"):format(rel.model_name)
+      end
+      local model = (@*norm.Model)(model_ptr)
+      local where: hashmap(string, string)
+      where[key] = id
       return model:find(where)
     end
   end
