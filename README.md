@@ -91,7 +91,8 @@ local norm.Db = @record{
     pg_db: *pg.type,
     mysql_db: *mysql.type
   },
-  log: logger.NotSetOrBool
+  log: logger.NotSetOrBool,
+  models: hashmap(string, pointer) -- norm.Model
 }
 ```
 
@@ -344,14 +345,60 @@ If no error occurs, the string is empty
 function norm.migrate(db: norm.Db, migrations: sequence(norm.Schema.Migration)): string
 ```
 
+### norm.RelationKind
+
+This enum is used to determine the type of relation in [norm.Relation](#normrelation)
+
+```lua
+local norm.RelationKind = @enum{
+  not_set = 0,
+  belongs_to,
+  has_one,
+  has_many
+}
+```
+
+### norm.Relation
+
+This record is used to define new relations for a [model](#normmodel)
+
+```lua
+local norm.Relation = @record{
+  kind: norm.RelationKind,
+  rel: record{
+    name: string,
+    model_name: string,
+    key: string
+  }
+}
+```
+
+### norm.ModelOpts
+
+This is used to configure extra options for a [model](#normmodel) instance
+
+- `primary_keys`: By default all models expect the table to have a primary key called "id" at index 1.
+  This can be changed by setting the primary_keys value here
+- `rels`: A sequence of defined relations used to connect models
+
+```lua
+local norm.ModelOpts = @record{
+  primary_keys: sequence(string),
+  rels: sequence(norm.Relation)
+}
+```
+
 ### norm.Model
 
 This is used to interact with a particular table directly with more specific functions
 
 ```lua
 local norm.Model = @record{
-  db: norm.Db,
-  name: string,
+  db: *norm.Db,
+  model_name: string,
+  tbl_name: string,
+  primary_keys: sequence(string),
+  rels: sequence(norm.Relation)
 }
 ```
 
@@ -362,19 +409,29 @@ This is meant to represent a single row in a model's table
 
 ```lua
 local norm.Model.Inst = @record{
-  db: norm.Db,
-  tbl_name: string,
+  parent: *norm.Model,
   row: hashmap(string, string)
 }
 ```
 
 ### norm.Model.new
 
-This function runs all `migrations`, returning a new [norm.Model](#normmodel) object and an error string
+This function returns a new Model object and an error string
 If no error occurs, the string is empty
 
+This function allocates memory for the model as it needs to be stored as a pointer in the [db](#normdb) instance to be used with relations
+Maked sure to call [Model:destroy](#normmodeldestroy) to clear it out from the db before trying to create a new one with similar relations
+
 ```lua
-function norm.Model.new(db: norm.Db, name: string): (norm.Model, string)
+function norm.Model.new(db: *norm.Db, tbl_name: string, model_name: string, opts: norm.ModelOpts): (*norm.Model, string)
+```
+
+### norm.Model:destroy
+
+Used to clean up memory created by the model and clear it from the model cache in the db instance
+
+```lua
+function norm.Model:destroy()
 ```
 
 ### norm.Model:find
@@ -405,6 +462,15 @@ If no error occurs, the string is empty
 function norm.Model:create(values: hashmap(string, string), returning: facultative(string)): (norm.Model.Inst, string)
 ```
 
+### norm.Model.Inst:get_col
+
+This function get's the value of the col by `name` if it exists, returning the value and an error string
+If no error occurs, the string is empty
+
+```lua
+function norm.Model.Inst:get_col(name: string): (string, string)
+```
+
 ### norm.Model.Inst:update
 
 This function updates the row instance with `values` into the model's table, returning a [norm.model.Inst](#normmodelinst) object and an error string
@@ -424,13 +490,37 @@ If no error occurs, the string is empty
 function norm.Model.Inst:delete(): string
 ```
 
-### norm.Model.Inst:get_col
+### norm.Model.Inst:get_belongs_to
 
-This function get's the value of the col by `name` if it exists, returning the value and an error string
+This function returns a new model instance based on the `rel_name` and an error string
 If no error occurs, the string is empty
 
+A relation that fetches a single related model instance. The foreign key column used to fetch the other model is located on the same table as the model. For example, a table named `posts` with a column named `user_id` would belong to a table named `users`.
+
 ```lua
-function norm.Model.Inst:get_col(name: string): (string, string)
+function norm.Model.Inst:get_belongs_to(rel_name: string): (norm.Model.Inst, string)
+```
+
+### norm.Model.Inst:get_has_one
+
+This function returns a new model instance based on the `rel_name` and an error string
+If no error occurs, the string is empty
+
+A relation that fetches a single related model. Similar to `belongs_to`, but the foreign key used to fetch the other model is located on the other table
+
+```lua
+function norm.Model.Inst:get_has_one(rel_name: string): (norm.Model.Inst, string)
+```
+
+### norm.Model.Inst:get_has_one
+
+This function returns a sequence of new model instances based on the `rel_name` and an error string
+If no error occurs, the string is empty
+
+A relation that fetches a sequence of the related model. Similar to `has_one`, but returning multiple
+
+```lua
+function norm.Model.Inst:get_has_many(rel_name: string): (sequence(norm.Model.Inst), string)
 ```
 
 ## base.nelua
@@ -448,6 +538,7 @@ function base.escape_identifier(s: string)
 ### base.escape_literal
 
 Escapes a string `s` so it can be used as a literal in sql queries
+If the whole of `s` matches an integer or float, it is not escaped
 
 ```lua
 function base.escape_literal(s: string)

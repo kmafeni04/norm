@@ -794,13 +794,22 @@ function norm.migrate(db: norm.Db, migrations: sequence(norm.Schema.Migration)):
   return db_commit_or_rollback(db, err, ran_migrations)
 end
 
+--- ### norm.RelationKind
+--- This enum is used to determine the type of relation in [norm.Relation](#normrelation)
+---`
 local norm.RelationKind = @enum{
   not_set = 0,
   belongs_to,
   has_one,
   has_many
 }
+---`
 
+--- ### norm.Relation
+--[[-
+This record is used to define new relations for a [model](#normmodel)
+-]]
+---`
 local norm.Relation = @record{
   kind: norm.RelationKind,
   rel: record{
@@ -809,11 +818,22 @@ local norm.Relation = @record{
     key: string
   }
 }
+---`
 
+--- ### norm.ModelOpts
+--[[-
+This is used to configure extra options for a [model](#normmodel) instance
+
+- `primary_keys`: By default all models expect the table to have a primary key called "id" at index 1.
+  This can be changed by setting the primary_keys value here
+- `rels`: A sequence of defined relations used to connect models
+-]]
+---`
 local norm.ModelOpts = @record{
   primary_keys: sequence(string),
   rels: sequence(norm.Relation)
 }
+---`
 
 --- ### norm.Model
 --- This is used to interact with a particular table directly with more specific functions
@@ -841,8 +861,11 @@ local norm.Model.Inst = @record{
 
 --- ### norm.Model.new
 --[[-
-This function runs all `migrations`, returning a new [norm.Model](#normmodel) object and an error string
+This function returns a new Model object and an error string
 If no error occurs, the string is empty
+
+This function allocates memory for the model as it needs to be stored as a pointer in the [db](#normdb) instance to be used with relations
+Maked sure to call [Model:destroy](#normmodeldestroy) to clear it out from the db before trying to create a new one with similar relations
 -]]
 ---`
 function norm.Model.new(db: *norm.Db, tbl_name: string, model_name: string, opts: norm.ModelOpts): (*norm.Model, string)
@@ -877,7 +900,11 @@ function norm.Model.new(db: *norm.Db, tbl_name: string, model_name: string, opts
   return model, ""
 end
 
+--- ### norm.Model:destroy
+--- Used to clean up memory created by the model and clear it from the model cache in the db instance
+---`
 function norm.Model:destroy()
+---`
   if not self then return end
   self.db.models:remove(self.model_name)
   delete(self)
@@ -1039,7 +1066,16 @@ function norm.Model.Inst:delete(): string
   return self.parent.db:delete(self.parent.tbl_name, conds)
 end
 
+--- ### norm.Model.Inst:get_belongs_to
+--[[-
+This function returns a new model instance based on the `rel_name` and an error string
+If no error occurs, the string is empty
+
+A relation that fetches a single related model instance. The foreign key column used to fetch the other model is located on the same table as the model. For example, a table named `posts` with a column named `user_id` would belong to a table named `users`.
+-]]
+---`
 function norm.Model.Inst:get_belongs_to(rel_name: string): (norm.Model.Inst, string)
+---`
   if not self.parent then
     return {}, "This model instance's parent does not exist"
   end
@@ -1073,7 +1109,16 @@ function norm.Model.Inst:get_belongs_to(rel_name: string): (norm.Model.Inst, str
   return {}, ("A matching relation was not found for `%s`"):format(rel_name)
 end
 
+--- ### norm.Model.Inst:get_has_one
+--[[-
+This function returns a new model instance based on the `rel_name` and an error string
+If no error occurs, the string is empty
+
+A relation that fetches a single related model. Similar to `belongs_to`, but the foreign key used to fetch the other model is located on the other table
+-]]
+---`
 function norm.Model.Inst:get_has_one(rel_name: string): (norm.Model.Inst, string)
+---`
   if not self.parent then
     return {}, "This model instance's parent does not exist"
   end
@@ -1107,7 +1152,16 @@ function norm.Model.Inst:get_has_one(rel_name: string): (norm.Model.Inst, string
   return {}, ("A matching relation was not found for `%s`"):format(rel_name)
 end
 
+--- ### norm.Model.Inst:get_has_one
+--[[-
+This function returns a sequence of new model instances based on the `rel_name` and an error string
+If no error occurs, the string is empty
+
+A relation that fetches a sequence of the related model. Similar to `has_one`, but returning multiple
+-]]
+---`
 function norm.Model.Inst:get_has_many(rel_name: string): (sequence(norm.Model.Inst), string)
+---`
   if not self.parent then
     return {}, "This model instance's parent does not exist"
   end
