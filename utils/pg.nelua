@@ -1,5 +1,6 @@
 require "..thirdparty.libpq-fe"
 
+local AnsiColor = require "..thirdparty.ansicolor"
 local logger = require ".logger"
 
 local M = @record{}
@@ -57,8 +58,10 @@ function M.rollback(db: *PGconn): string
 end
 
 function M.query(log: logger.NotSetOrBool, db: *PGconn, sql: string): (sequence(hashmap(string, string)), string)
+  local log_str = AnsiColor.new("SQL: "):Cyan():Bright():text() .. AnsiColor.new(sql):Magenta():text()
+  logger.log(log, log_str)
+
   local rows: sequence(hashmap(string, string))
-  logger.log(log, sql)
 
   local res: *PGresult = PQexec(db, sql)
   if PQresultStatus(res) ~= PGRES_TUPLES_OK then

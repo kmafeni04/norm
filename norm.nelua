@@ -1,4 +1,5 @@
 --- ## norm.nelua
+
 require "io"
 
 local base = require ".utils.base"
@@ -7,6 +8,7 @@ local pg = require ".utils.pg"
 local mysql = require ".utils.mysql"
 local logger = require ".utils.logger"
 local inflect = require "thirdparty.inflect"
+local AnsiColor = require "thirdparty.ansicolor"
 
 --- ### norm
 --- The norm module
@@ -500,7 +502,8 @@ local function db_migrate(db: norm.Db, migrated: hashmap(string, boolean), migra
   end
   for _, v in ipairs(migrations) do
     if not migrated:has(v.name) then
-      logger.log(db.log, "Migrating: " .. v.name)
+      local log_str = AnsiColor.new("Migrating: "):Bright():Yellow():text() .. AnsiColor.new(v.name):Green():Bright():text()
+      logger.log(db.log, log_str)
       local vals: hashmap(string, string)
       vals["migration"] = v.name
       db:insert("norm_migrations", vals)
@@ -521,30 +524,39 @@ local function db_commit_or_rollback(db: norm.Db, err: string, ran_migrations: u
   switch db.kind do
     case norm.DbKind.sqlite then
       if err ~= "" then
-        logger.log(db.log, "Failed to migrate: " .. err)
+        local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():text()
+        logger.log(db.log, log_str)
         sqlite.rollback(db.conn.sqlite_db)
-        logger.log(db.log, "Rolling back")
+        local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():text()
+        logger.log(db.log, log_str)
       else
         sqlite.commit(db.conn.sqlite_db)
-        logger.log(db.log, ("Ran %d migrations"):format(ran_migrations))
+        local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():text()
+        logger.log(db.log, log_str)
       end
     case norm.DbKind.pg then
       if err ~= "" then
-        logger.log(db.log, "Failed to migrate: " .. err)
+        local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():text()
+        logger.log(db.log, log_str)
         pg.rollback(db.conn.pg_db)
-        logger.log(db.log, "Rolling back")
+        local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():text()
+        logger.log(db.log, log_str)
       else
         pg.commit(db.conn.pg_db)
-        logger.log(db.log, ("Ran %d migrations"):format(ran_migrations))
+        local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():text()
+        logger.log(db.log, log_str)
       end
     case norm.DbKind.mysql then
       if err ~= "" then
-        logger.log(db.log, "Failed to migrate: " .. err)
+        local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():text()
+        logger.log(db.log, log_str)
         mysql.rollback(db.conn.mysql_db)
-        logger.log(db.log, "Rolling back")
+        local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():text()
+        logger.log(db.log, log_str)
       else
         mysql.commit(db.conn.mysql_db)
-        logger.log(db.log, ("Ran %d migrations"):format(ran_migrations))
+        local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():text()
+        logger.log(db.log, log_str)
       end
     else
       err = "UNKONWN DB KIND"
@@ -762,9 +774,13 @@ If no error occurs, the string is empty
 ---`
 function norm.migrate(db: norm.Db, migrations: sequence(norm.Schema.Migration)): string
 ---`
-  logger.log(db.log, "Running migrations")
+  local log_str = AnsiColor.new("Running migrations"):Bright():Yellow():text()
+  logger.log(db.log, log_str)
   if not db:table_exists("norm_migrations") then
-    logger.log(db.log, "Creating migrations table")
+    local log_str = AnsiColor.new("Migrations table does not exist"):Bright():Yellow():text()
+    logger.log(db.log, log_str)
+    local log_str = AnsiColor.new("Creating migrations table"):Bright():Yellow():text()
+    logger.log(db.log, log_str)
     local err = norm.Schema.create_table(db, "norm_migrations", {
       {"migration", norm.Schema.ColumnType.varchar, { primary_key = true }}
     })
