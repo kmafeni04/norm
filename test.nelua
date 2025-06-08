@@ -295,6 +295,45 @@ local player_name, err = player:get_col("name")
 mild_assert!(err == "", err)
 mild_assert!(player_name == "Jack")
 
+Users:destroy()
+
+local Users, err = model.new(db, "users", "Users",{
+  rels = {
+    {
+      kind = norm.RelationKind.has_many,
+      rel = {
+        name = "player",
+        model_name = "Players",
+      }
+    }
+  }
+})
+mild_assert!(err == "", err)
+
+local users_find: hashmap(string, string)
+users_find["name"] = "James"
+users_find["age"] = "21"
+local user, err = Users:find(users_find)
+mild_assert!(err == "", err)
+
+local player_create: hashmap(string, string)
+player_create["name"] = "John"
+player_create["age"] = "31"
+player_create["user_id"] = user:get_col("id")
+local player, err = Players:create(player_create)
+mild_assert!(err == "", err)
+
+local players, err = user:get_has_many("player")
+mild_assert!(err == "", err)
+
+local player1_name, err = players[1]:get_col("name")
+mild_assert!(err == "", err)
+mild_assert!(player1_name == "Jack")
+
+local player2_name, err = players[2]:get_col("name")
+mild_assert!(err == "", err)
+mild_assert!(player2_name == "John")
+
 ::ending::
 switch db.kind do
   case norm.DbKind.sqlite then

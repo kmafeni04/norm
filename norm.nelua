@@ -1,7 +1,3 @@
---[[
-  TODO:
-    - Implement relations: [has_one, has_many]
-]]
 --- ## norm.nelua
 require "io"
 
@@ -845,7 +841,7 @@ function norm.Model.new(db: *norm.Db, tbl_name: string, model_name: string, opts
     return nilptr, "Model name can not be empty"
   end
   if db.models:has(model_name) then
-    return nilptr, "Model name already exists on this Db instance"
+    return nilptr, ("Model `%s` already exists on this Db instance"):format(model_name)
   end
   local primary_keys: sequence(string)
   if #opts.primary_keys < 1 then
@@ -1089,6 +1085,40 @@ function norm.Model.Inst:get_has_one(rel_name: string): (norm.Model.Inst, string
       local where: hashmap(string, string)
       where[key] = id
       return model:find(where)
+    end
+  end
+
+  return {}, ("A matching relation was not found for `%s`"):format(rel_name)
+end
+
+function norm.Model.Inst:get_has_many(rel_name: string): (sequence(norm.Model.Inst), string)
+  if not self.parent then
+    return {}, "This model instance's parent does not exist"
+  end
+  for _, rel in ipairs(self.parent.rels) do
+    if rel.rel.name == rel_name and rel.kind == norm.RelationKind.has_many then
+      local rel = rel.rel
+      local key: string
+      if rel.key ~= "" then
+        key = rel.key
+      else
+        key = inflect.depluralize(self.parent.tbl_name) .. "_id"
+      end
+      local id, err = self:get_col(self.parent.primary_keys[1])
+      if err ~= "" then
+        return {}, "Could not find key on instance table: " .. err
+      end
+      local ok, model_ptr = self.parent.db.models:has_and_get(rel.model_name)
+      if not ok then
+        return {}, ("Realtion's model `%s` does not exist on this db instance"):format(rel.model_name)
+      end
+      if not model_ptr then
+        return {}, ("Model `%s` in db instance is a nilptr"):format(rel.model_name)
+      end
+      local model = (@*norm.Model)(model_ptr)
+      local where: hashmap(string, string)
+      where[key] = id
+      return model:select(where)
     end
   end
 
