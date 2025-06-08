@@ -6,7 +6,7 @@ local sqlite = require ".utils.sqlite"
 local pg = require ".utils.pg"
 local mysql = require ".utils.mysql"
 local logger = require ".utils.logger"
-local inflect = require "utils.inflect"
+local inflect = require "thirdparty.inflect"
 
 --- ### norm
 --- The norm module

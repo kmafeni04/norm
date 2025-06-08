@@ -1,4 +1,4 @@
-require "..libs.libpq-fe"
+require "..thirdparty.libpq-fe"
 
 local logger = require ".logger"
 

@@ -1,4 +1,4 @@
-require "..libs.sqlite"
+require "..thirdparty.sqlite"
 
 local logger = require ".logger"
 

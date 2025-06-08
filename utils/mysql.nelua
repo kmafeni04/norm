@@ -1,4 +1,4 @@
-require "..libs.mariadb"
+require "..thirdparty.mariadb"
 
 local logger = require ".logger"
 
