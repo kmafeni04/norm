@@ -2,6 +2,8 @@
 
 require "io"
 
+require "thirdparty.inline_map"
+
 local base = require ".utils.base"
 local sqlite = require ".utils.sqlite"
 local pg = require ".utils.pg"
@@ -1031,8 +1033,9 @@ function norm.Model.Inst:update(values: hashmap(string, string), returning: facu
   if err ~= "" then
     return {}, "Could not match primary key in model: " .. err
   end
-  local conds: hashmap(string, string)
-  conds[self.parent.primary_keys[1]] = id
+  local conds = inline_map!(string, string, {
+    [self.parent.primary_keys[1]] = id
+  })
   local rows, err = self.parent.db:update(self.parent.tbl_name, values, conds, returning)
   if err ~= "" then
     return {}, err
@@ -1100,9 +1103,9 @@ function norm.Model.Inst:get_belongs_to(rel_name: string): (norm.Model.Inst, str
         return {}, ("Model `%s` in db instance is a nilptr"):format(rel.model_name)
       end
       local model = (@*norm.Model)(model_ptr)
-      local where: hashmap(string, string)
-      where[model.primary_keys[1]] = id
-      return model:find(where)
+      return model:find(inline_map!(string, string, {
+        [model.primary_keys[1]] = id
+      }))
     end
   end
 
@@ -1143,9 +1146,9 @@ function norm.Model.Inst:get_has_one(rel_name: string): (norm.Model.Inst, string
         return {}, ("Model `%s` in db instance is a nilptr"):format(rel.model_name)
       end
       local model = (@*norm.Model)(model_ptr)
-      local where: hashmap(string, string)
-      where[key] = id
-      return model:find(where)
+      return model:find(inline_map!(string, string, {
+        [key] = id
+      }))
     end
   end
 
@@ -1186,9 +1189,9 @@ function norm.Model.Inst:get_has_many(rel_name: string): (sequence(norm.Model.In
         return {}, ("Model `%s` in db instance is a nilptr"):format(rel.model_name)
       end
       local model = (@*norm.Model)(model_ptr)
-      local where: hashmap(string, string)
-      where[key] = id
-      return model:select(where)
+      return model:select(inline_map!(string, string, {
+        [key] = id
+      }))
     end
   end
 
