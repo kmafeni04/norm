@@ -9,12 +9,107 @@ local gen = ssdg.new({
   },
 })
 
+local subs: hashmap(string, string)
+subs["lang"] = gen.conf.lang
+
 gen:add([[
 # norm
 
 A database ORM for the [nelua](https://www.nelua.io) programming language
 
-]])
+## Quick Start
+
+```:lang:
+local norm = require "path.to.norm"
+
+-- Instantiate a new Db object
+local db, err = norm.Db.new({
+  kind = norm.DbKind.sqlite,
+  conn = {
+    sqlite = {
+      name = "test.db"
+    }
+  }
+})
+
+-- Create and run your Db migrations
+local schema = norm.Schema
+local type = schema.ColumnType
+local err = norm.migrate(db, {
+  {
+    "1",
+    function(db: norm.Db): string
+      local err: string
+      err = schema.create_table(db, "users", {
+        {"id", type.integer, { primary_key = true }},
+        {"name", type.text, { unique = true }},
+        {"age", type.integer}
+      })
+      if err ~= "" then
+        return err
+      end
+
+      err = schema.create_table(db, "players", {
+        {"id", type.integer, { primary_key = true }},
+        {"name", type.text, { unique = true }},
+        {"age", type.integer}
+      })
+      if err ~= "" then
+        return err
+      end
+
+      return ""
+    end
+  }
+}
+
+-- Insert a value into the users table
+local users_insert: hashmap(string, string)
+users_insert["name"] = "James"
+users_insert["age"] = "21"
+local rows, err = db:insert("users", users_insert)
+assert(err == "", err)
+
+-- Select matching rows from the users table
+local users_select: hashmap(string, string)
+users_select["name"] = "James"
+users_select["age"] = "21"
+local rows, err = db:select("* FROM users", users_select)
+assert(err == "", err)
+print(rows[1]["name"]) -- Should print "James"
+
+-- Delete matching rows from the user table
+local users_delete: hashmap(string, string)
+users_delete["name"] = "James"
+users_delete["age"] = "21"
+local err = db:delete("users", users_delete)
+assert(err == "", err)
+
+local model = norm.Model
+
+-- Create a new User model
+local Users, err = model.new(db, "users", "Users")
+assert(err == "", err)
+
+-- Create a new model instance
+local users_create: hashmap(string, string)
+users_create["name"] = "James"
+users_create["age"] = "21"
+local user, err = Users:create(users_create)
+assert(err == "", err)
+
+-- Get a column from the model instance
+local name, err = user:get_col("name")
+assert(err == "", err)
+print(name) -- Should print "James"
+
+-- Delete the User model instance 
+local err = user:delete()
+assert(err == "", err)
+
+```
+
+]], { subs = subs })
 
 gen:add_file("./norm.nelua")
 
@@ -26,6 +121,8 @@ gen:add([[
 ---
 
 ## Acknowledgements
+
+This library is heavliy inspired by the [lapis](https://leafo.net/lapis/) and [GORM](https://gorm.io/)
 ]])
 
 gen:write_file("./README.md")

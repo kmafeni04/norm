@@ -54,7 +54,6 @@ local db, err = norm.Db.new({
 mild_assert!(err == "", err)
 
 -- Migration tests
-local migrations: hashmap(string, norm.Schema.Migration)
 local schema = norm.Schema
 local type = schema.ColumnType
 local err = norm.migrate(db, {
@@ -211,12 +210,6 @@ local users_delete: hashmap(string, string)
 users_delete["name"] = "James"
 users_delete["age"] = "21"
 local err = db:delete("users", users_delete)
-mild_assert!(err == "", err)
-
-local users_select: hashmap(string, string)
-users_select["name"] = "James"
-users_select["age"] = "21"
-local rows, err = db:select("* FROM users", users_select)
 mild_assert!(err == "", err)
 
 local model = norm.Model

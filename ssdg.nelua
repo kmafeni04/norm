@@ -35,13 +35,13 @@ local Config = @record{
 }
 ---`
 
---- ### FileOptions record
+--- ### AddOptions record
 --[[-
-Used to pass extra behaviours to [ssdg:add_file](#ssdgadd_file)
+Used to pass extra behaviours to ssdg:add functions
 `subs` - Used to replace any thing that matches the inside of the [Config](#config-record).sub Block
 -]]
 ---`
-local FileOptions = @record{
+local AddOptions = @record{
   subs: hashmap(string, string)
 }
 ---`
@@ -60,6 +60,27 @@ local function assert_block(conf: Config)
     conf.ignore_block,
     conf.sub
   }
+  local function index_tostring(i: uinteger): string
+    switch i do
+      case 1 then
+        return "multi_line"
+      case 2 then
+        return "code_block"
+      case 3 then
+        return "ignore_block"
+      case 4 then
+        return "sub"
+    end
+    return "UNKNOWN INDEX"
+  end
+  for i, v in ipairs(check) do
+    if v.starting ~= "" then
+      assert(v.ending ~= "", ("Block `%s` can not have an empty ending if it's starting is set"):format(index_tostring(i)))
+    end
+    if v.ending~= "" then
+      assert(v.starting ~= "", ("Block `%s` can not have an empty starting if it's ending is set"):format(index_tostring(i)))
+    end
+  end
   local seen_starting: hashmap(string, Block)
   for i, v in ipairs(check) do
     assert(not seen_starting:has(v.starting), ("%s is already assigned as the starting of another `Block`"):format(v.starting))
@@ -100,15 +121,18 @@ end
 --- ### ssdg:add
 --- Adds `s` to the instance buffer
 ---`
-function ssdg:add(s: string)
+function ssdg:add(s: string, opts: AddOptions)
 ---`
+  local conf = self.conf
+  local sub_str = ("%s%s%s"):format(escape_special(conf.sub.starting), "%s*([%w_]+)%s*", escape_special(conf.sub.ending))
+  s = s:gsub(sub_str, opts.subs)
   assert(self.buf:write(s), "Failed to write into internal buffer")
 end
 
 --- ### ssdg:add_file
 --- Reads the content of a file at `path` adding any docs to the buffer based on the provided config
 ---`
-function ssdg:add_file(path: string, opts: FileOptions)
+function ssdg:add_file(path: string, opts: AddOptions)
 ---`
   local file <close> = io.open(path, "r")
   assert(file:isopen(), "Failed to open file at path: " .. path)
@@ -135,7 +159,7 @@ function ssdg:add_file(path: string, opts: FileOptions)
         assert(li <= #lines, ("%s:%d:%d: error: No closing found for ignore block"):format(path, start_mark, #lines[start_mark]))
       until lines[li]:match(block_end_match_str)
       assert(
-        lines[li]:match("^" .. block_end_match_str .. "%s*$"),
+        lines[li]:match("^%s*" .. block_end_match_str .. "%s*$"),
         ("%s:%d: error: ignore block end must not contain any extra characters"):format(path, li)
       )
     elseif lines[li]:match(escape_special(conf.single_line .. conf.lead .. conf.code_block.starting)) then
@@ -146,13 +170,13 @@ function ssdg:add_file(path: string, opts: FileOptions)
       li = li + 1
       local start_mark = li
       repeat
-        lines[li] = lines[li]:gsub(sub_str, opts.subs)
+        lines[li] = lines[li]:gsub(sub_str, opts.subs) -- I do it per line to make sure that I am in a doc comment before subbing out
         self.buf:write(lines[li])
         li = li + 1
         assert(li <= #lines, ("%s:%d:%d: error: No closing found for code block"):format(path, start_mark, #lines[start_mark]))
       until lines[li]:match(block_end_match_str)
       assert(
-        lines[li]:match("^" .. block_end_match_str .. "%s*$"),
+        lines[li]:match("^%s*" .. block_end_match_str .. "%s*$"),
         ("%s:%d: error: code block end must not contain any extra characters"):format(path, li)
       )
       self.buf:write("```\n\n")
@@ -183,7 +207,7 @@ function ssdg:add_file(path: string, opts: FileOptions)
           assert(li <= #lines, ("%s:%d:%d: error: No closing found for multi line block"):format(path, start_mark, #lines[start_mark]))
         until lines[li]:match(block_end_match_str)
         assert(
-          lines[li]:match("^" .. block_end_match_str .. "%s*$"),
+          lines[li]:match("^%s*" .. block_end_match_str .. "%s*$"),
           ("%s:%d: error: multi_line block end must not contain any extra characters"):format(path, li)
         )
         local block_match, block_seq = block:match("(.*)" .. block_end_match_str)
