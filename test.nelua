@@ -1,6 +1,8 @@
 require "io"
 require "os"
 
+require "thirdparty.inline_map"
+
 ## local function mild_assert(cond, message)
   do
     if not #[cond]# then
@@ -194,37 +196,41 @@ local err = norm.migrate(db, {
 mild_assert!(err == "", err)
 
 -- Generic tests
-local users_insert: hashmap(string, string)
-users_insert["name"] = "James"
-users_insert["age"] = "21"
-local rows, err = db:insert("users", users_insert)
+local rows, err = db:insert("users", inline_map!(string, string, {
+  name = "James",
+  age = "21"
+}))
 mild_assert!(err == "", err)
 
-local users_select: hashmap(string, string)
-users_select["name"] = "James"
-users_select["age"] = "21"
-local rows, err = db:select("* FROM users", users_select)
+local rows, err = db:select("* FROM users", inline_map!(string, string, {
+  name = "James",
+  age = "21"
+}))
+
 mild_assert!(err == "", err)
 
-local users_delete: hashmap(string, string)
-users_delete["name"] = "James"
-users_delete["age"] = "21"
-local err = db:delete("users", users_delete)
+local err = db:delete("users", inline_map!(string, string, {
+  name = "James",
+  age = "21"
+}))
+
 mild_assert!(err == "", err)
 
 local model = norm.Model
 local Users, err = model.new(db, "users", "Users")
 mild_assert!(err == "", err)
 
-local users_create: hashmap(string, string)
-users_create["name"] = "James"
-users_create["age"] = "21"
-local user, err = Users:create(users_create)
+local user, err = Users:create(inline_map!(string, string, {
+  name = "James",
+  age = "21"
+}))
+
 mild_assert!(err == "", err)
 
-local users_update: hashmap(string, string)
-users_update["name"] = "John"
-local user, err = user:update(users_update)
+local user, err = user:update(inline_map!(string, string, {
+  name = "John",
+}))
+
 mild_assert!(err == "", err)
 
 local err = user:delete()
@@ -248,10 +254,11 @@ local Users, err = model.new(db, "users", "Users",{
 })
 mild_assert!(err == "", err)
 
-local users_create: hashmap(string, string)
-users_create["name"] = "James"
-users_create["age"] = "21"
-local user, err = Users:create(users_create)
+local user, err = Users:create(inline_map!(string, string, {
+  name = "James",
+  age = "21"
+}))
+
 mild_assert!(err == "", err)
 
 local Players, err = model.new(db, "players", "Players", {
@@ -267,11 +274,12 @@ local Players, err = model.new(db, "players", "Players", {
 })
 mild_assert!(err == "", err)
 
-local player_create: hashmap(string, string)
-player_create["name"] = "Jack"
-player_create["age"] = "25"
-player_create["user_id"] = user:get_col("id")
-local player, err = Players:create(player_create)
+local player, err = Players:create(inline_map!(string, string, {
+  name = "Jack",
+  age = "25",
+  user_id = user:get_col("id"),
+}))
+
 mild_assert!(err == "", err)
 
 local user, err = player:get_belongs_to("user")
@@ -303,17 +311,17 @@ local Users, err = model.new(db, "users", "Users",{
 })
 mild_assert!(err == "", err)
 
-local users_find: hashmap(string, string)
-users_find["name"] = "James"
-users_find["age"] = "21"
-local user, err = Users:find(users_find)
+local user, err = Users:find(inline_map!(string, string, {
+  name = "James",
+  age = "21"
+}))
 mild_assert!(err == "", err)
 
-local player_create: hashmap(string, string)
-player_create["name"] = "John"
-player_create["age"] = "31"
-player_create["user_id"] = user:get_col("id")
-local player, err = Players:create(player_create)
+local player, err = Players:create(inline_map!(string, string, {
+  name = "John",
+  age = "31",
+  user_id = user:get_col("id")
+}))
 mild_assert!(err == "", err)
 
 local players, err = user:get_has_many("player")

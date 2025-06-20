@@ -1,0 +1,15 @@
+require "hashmap"
+
+## function inline_map(K, V, vals)
+  ## static_assert(type(vals) == "table", "`vals` must be a table")
+  ##[[
+  for i, v in ipairs(vals) do
+    static_assert(v.is_Pair, "index %d of vals is not a pair: `%s`", i, v)
+  end
+  ]]
+  local _map: hashmap(#[K]#, #[V]#)
+  ## for i, v in ipairs(vals) do
+    _map[#[v[1]]#] = #[v[2]]#
+  ## end
+  in _map
+## end

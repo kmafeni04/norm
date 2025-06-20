@@ -166,12 +166,12 @@ function norm.Db:table_exists(name: string): boolean
   local sql: string
   switch self.kind do
     case norm.DbKind.sqlite then
-      sql = ("SELECT \"name\" FROM sqlite_master WHERE type='table' AND name=%s"):format(norm.escape_literal(name))
+      sql = ("SELECT \"name\" FROM sqlite_master WHERE type = 'table' AND name = %s"):format(norm.escape_literal(name))
     case norm.DbKind.pg then
       sql = ("SELECT tablename FROM pg_catalog.pg_tables WHERE tablename = %s"):format(norm.escape_literal(name))
     case norm.DbKind.mysql then
       sql = (
-        "SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME = %s;"
+        "SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME = %s"
       ):format(norm.escape_literal(name))
     else
       error("UNKNOWN")
