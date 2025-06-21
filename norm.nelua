@@ -2,15 +2,15 @@
 
 require "io"
 
-require "thirdparty.inline_map"
+require ".thirdparty.inline_map"
 
 local base = require ".utils.base"
 local sqlite = require ".utils.sqlite"
 local pg = require ".utils.pg"
 local mysql = require ".utils.mysql"
 local logger = require ".utils.logger"
-local inflect = require "thirdparty.inflect"
-local AnsiColor = require "thirdparty.ansicolor"
+local inflect = require ".thirdparty.inflect"
+local AnsiColor = require ".thirdparty.ansicolor"
 
 --- ### norm
 --- The norm module
