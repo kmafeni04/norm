@@ -1009,7 +1009,7 @@ function norm.Model.Inst:get_col(name: string): (string, string)
   end
   local ok, v = self.row:has_and_get(name)
   if not ok then
-    return "", ("name `%s` does not exist in row"):format(name)
+    return "", ""
   end
   return v, "" 
 end
