@@ -29,7 +29,7 @@ function base.escape_literal(s: string)
   if s == "" then
     return s
   end
-  local num_match = s:match("^%d+%.?%d*")
+  local num_match = s:match("^%d+%.?%d*$")
   if num_match then
     return s
   end
