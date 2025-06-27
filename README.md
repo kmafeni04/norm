@@ -535,6 +535,18 @@ If no error occurs, the string is empty
 function norm.Model:find(conditions: hashmap(string, string)): (norm.Model.Inst, string)
 ```
 
+### norm.Model:count
+
+This function returns the total number of records in a model based on the provided conditions and an error string
+If condition is a string, it is appended in a `WHERE` clause directly
+If condition is a hashmap, it is formatterd into a `WHERE` clause
+If no condition is provided then every row in the table will be counted
+If no error occurs, the string is empty
+
+```lua
+function norm.Model:count(conditions: overload(niltype, string, hashmap(string, string))): (integer, string)
+```
+
 ### norm.Model:select
 
 This function attempts to find rows based on the `conditions`, returning a sequence of [norm.model.Inst](#normmodelinst) objects and an error string

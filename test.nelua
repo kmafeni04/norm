@@ -335,6 +335,11 @@ local player2_name, err = players[2]:get_col("name")
 mild_assert!(err == "", err)
 mild_assert!(player2_name == "John")
 
+local count, err = Users:count()
+mild_assert!(err == "", err)
+mild_assert!(count == 1)
+
+
 ::ending::
 switch db.kind do
   case norm.DbKind.sqlite then

@@ -942,6 +942,37 @@ function norm.Model:find(conditions: hashmap(string, string)): (norm.Model.Inst,
   }, ""
 end
 
+--- ### norm.Model:count
+--[[-
+This function returns the total number of records in a model based on the provided conditions and an error string
+If condition is a string, it is appended in a `WHERE` clause directly
+If condition is a hashmap, it is formatterd into a `WHERE` clause
+If no condition is provided then every row in the table will be counted
+If no error occurs, the string is empty
+-]]
+---`
+function norm.Model:count(conditions: overload(niltype, string, hashmap(string, string))): (integer, string)
+---`
+  local sb: stringbuilder
+  sb:writef("SELECT COUNT(*) as count FROM %s", norm.escape_identifier(self.tbl_name))
+  ## if conditions.type.is_string then
+    sb:writef(" WHERE %s", conditions)
+  ## elseif conditions.type.is_hashmap then
+    if next(conditions) then
+      sb:write(" WHERE")
+      for k, v in pairs(conditions) do
+        sb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
+      end
+      sb:rollback(#("AND "))
+    end
+  ## end
+  local rows, err = self.db:query(sb:promote())
+  if err ~= "" then
+    return 0, err
+  end
+  return tonumber(rows[1]["count"]), ""
+end
+
 --- ### norm.Model:select
 --[[-
 This function attempts to find rows based on the `conditions`, returning a sequence of [norm.model.Inst](#normmodelinst) objects and an error string
