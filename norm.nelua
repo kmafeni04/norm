@@ -956,9 +956,6 @@ function norm.Model:select(conditions: hashmap(string, string)): (sequence(norm.
   if err ~= "" then
     return {}, err
   end
-  if #rows < 1 then
-    return {}, "No rows were found with the query"
-  end
   for _, row in ipairs(rows) do
     result:push({      
       parent = self,
@@ -986,9 +983,6 @@ function norm.Model:create(values: hashmap(string, string), returning: facultati
   local rows, err = self.db:insert(self.tbl_name, values, returning)
   if err ~= "" then
     return {}, err
-  end
-  if #rows < 1 then
-    return {}, "No rows were found with the query"
   end
   return {      
     parent = self,
@@ -1039,9 +1033,6 @@ function norm.Model.Inst:update(values: hashmap(string, string), returning: facu
   local rows, err = self.parent.db:update(self.parent.tbl_name, values, conds, returning)
   if err ~= "" then
     return {}, err
-  end
-  if #rows < 1 then
-    return {}, "No rows were found with the query"
   end
   return {
     parent = self.parent,
