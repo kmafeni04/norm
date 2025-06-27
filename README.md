@@ -225,8 +225,8 @@ function norm.Db:table_exists(name: string): boolean
 
 ### norm.Db:select
 
-This function at it's simplest just append "SELECT" to a query
-Optionally, you can pass `where` to the query which will append a "WHERE" clause at the end of the sql with your conditions
+This function at it's simplest just appends "SELECT" to a query
+Optionally, you can pass `where` to the query which will append a `WHERE` clause at the end of the sql with your conditions
 
 ```lua
 function norm.Db:select(sql: string, where: hashmap(string, string)): (sequence(hashmap(string, string)), string)
@@ -247,25 +247,29 @@ function norm.Db:insert(
 
 ### norm.Db:update
 
-This function updates a table `tbl_name` with `values` where `conditions` returning the specified row of columns
-If `returning` is not set, and empty sequence is returned
+This function attempts deletes rows from a table `tbl_name based on `conditions`, returning an error string
+If condition is a string, it is appended in the `WHERE` clause directly
+If condition is a hashmap, it is formatterd into a `WHERE` clause
+If no error occurs, the string is empty
 
 ```lua
 function norm.Db:update(
     tbl_name: string,
     values: hashmap(string, string),
-    conditions: hashmap(string, string),
+    conditions: overload(string, hashmap(string, string)),
     returning: facultative(string)
   ): (sequence(hashmap(string, string)), string)
 ```
 
-### norm.Db:update
+### norm.Db:delete
 
-This function updates a table `tbl_name` with `values` where `conditions` returning the specified row of columns
-If `returning` is not set, and empty sequence is returned
+This function attempts deletes rows from a table `tbl_name based on `conditions`, returning an error string
+If condition is a string, it is appended in the `WHERE` clause directly
+If condition is a hashmap, it is formatterd into a `WHERE` clause
+If no error occurs, the string is empty
 
 ```lua
-function norm.Db:delete(tbl_name: string, conditions: hashmap(string, string)): string
+function norm.Db:delete(tbl_name: string, conditions: overload(string, hashmap(string, string))): string
 ```
 
 ### norm.Schema
@@ -529,10 +533,12 @@ function norm.Model:destroy()
 ### norm.Model:find
 
 This function attempts to find a row based on the `conditions`, returning a [norm.model.Inst](#normmodelinst) object and an error string
+If condition is a string, it is appended in a `WHERE` clause directly
+If condition is a hashmap, it is formatterd into a `WHERE` clause
 If no error occurs, the string is empty
 
 ```lua
-function norm.Model:find(conditions: hashmap(string, string)): (norm.Model.Inst, string)
+function norm.Model:find(conditions: overload(string, hashmap(string, string))): (norm.Model.Inst, string)
 ```
 
 ### norm.Model:count
@@ -550,10 +556,13 @@ function norm.Model:count(conditions: overload(niltype, string, hashmap(string, 
 ### norm.Model:select
 
 This function attempts to find rows based on the `conditions`, returning a sequence of [norm.model.Inst](#normmodelinst) objects and an error string
+If condition is a string, it is appended in a `WHERE` clause directly
+If condition is a hashmap, it is formatterd into a `WHERE` clause
+If no condition is provided then every row in the table will be returned
 If no error occurs, the string is empty
 
 ```lua
-function norm.Model:select(conditions: hashmap(string, string)): (sequence(norm.Model.Inst), string)
+function norm.Model:select(conditions: overload(niltype, string, hashmap(string, string))): (sequence(norm.Model.Inst), string)
 ```
 
 ### norm.Model:create

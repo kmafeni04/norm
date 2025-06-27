@@ -186,8 +186,8 @@ end
 
 --- ### norm.Db:select
 --[[-
-This function at it's simplest just append "SELECT" to a query
-Optionally, you can pass `where` to the query which will append a "WHERE" clause at the end of the sql with your conditions
+This function at it's simplest just appends "SELECT" to a query
+Optionally, you can pass `where` to the query which will append a `WHERE` clause at the end of the sql with your conditions
 -]]
 ---`
 function norm.Db:select(sql: string, where: hashmap(string, string)): (sequence(hashmap(string, string)), string)
@@ -265,14 +265,16 @@ end
 
 --- ### norm.Db:update
 --[[-
-This function updates a table `tbl_name` with `values` where `conditions` returning the specified row of columns
-If `returning` is not set, and empty sequence is returned
+This function attempts deletes rows from a table `tbl_name based on `conditions`, returning an error string
+If condition is a string, it is appended in the `WHERE` clause directly
+If condition is a hashmap, it is formatterd into a `WHERE` clause
+If no error occurs, the string is empty
 -]]
 ---`
 function norm.Db:update(
     tbl_name: string,
     values: hashmap(string, string),
-    conditions: hashmap(string, string),
+    conditions: overload(string, hashmap(string, string)),
     returning: facultative(string)
   ): (sequence(hashmap(string, string)), string)
 ---`
@@ -283,18 +285,20 @@ function norm.Db:update(
     return {}, "`values` can not be an empty hashmap"
   end
   local sb: stringbuilder
-  sb:writef("UPDATE %s SET ", norm.escape_identifier(tbl_name))
+  sb:writef("UPDATE %s SET", norm.escape_identifier(tbl_name))
   for k, v in pairs(values) do
-    sb:writef("%s = %s, ", norm.escape_identifier(k), norm.escape_literal(v))
+    sb:writef(" %s = %s,", norm.escape_identifier(k), norm.escape_literal(v))
   end
-  sb:rollback(2)
-  if next(conditions) then
-    sb:write(" WHERE ")
+  sb:rollback(1)
+  ## if conditions.type.is_string then
+    sb:writef(" WHERE %s", conditions)
+  ## elseif conditions.type.is_hashmap then
+    sb:write(" WHERE")
     for k, v in pairs(conditions) do
-      sb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
+      sb:writef(" %s = %s AND", norm.escape_identifier(k), norm.escape_literal(v))
     end
-    sb:rollback(#(" AND "))
-  end
+    sb:rollback(#(" AND"))
+  ## end
   ## if returning.type.is_string then
     if self.kind == norm.DbKind.mysql then
       self:query(sb:promote())
@@ -328,13 +332,15 @@ function norm.Db:update(
   return self:query(sb:promote())
 end
 
---- ### norm.Db:update
+--- ### norm.Db:delete
 --[[-
-This function updates a table `tbl_name` with `values` where `conditions` returning the specified row of columns
-If `returning` is not set, and empty sequence is returned
+This function attempts deletes rows from a table `tbl_name based on `conditions`, returning an error string
+If condition is a string, it is appended in the `WHERE` clause directly
+If condition is a hashmap, it is formatterd into a `WHERE` clause
+If no error occurs, the string is empty
 -]]
 ---`
-function norm.Db:delete(tbl_name: string, conditions: hashmap(string, string)): string
+function norm.Db:delete(tbl_name: string, conditions: overload(string, hashmap(string, string))): string
 ---`
   if tbl_name == "" then
     return "`tbl_name` can not be an empty string"
@@ -344,10 +350,14 @@ function norm.Db:delete(tbl_name: string, conditions: hashmap(string, string)): 
   end
   local sb: stringbuilder
   sb:writef("DELETE FROM %s WHERE ", norm.escape_identifier(tbl_name))
-  for k, v in pairs(conditions) do
-    sb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
-  end
-  sb:rollback(#(" AND "))
+  ## if conditions.type.is_string then
+    sb:write(conditions)
+  ## else
+    for k, v in pairs(conditions) do
+      sb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
+    end
+    sb:rollback(#(" AND "))
+  ## end
   local final = sb:promote()
   local rows, err = self:query(final)
   norm.destroy_rows(rows)
@@ -907,7 +917,6 @@ end
 ---`
 function norm.Model:destroy()
 ---`
-  if not self then return end
   self.db.models:remove(self.model_name)
   delete(self)
 end
@@ -915,22 +924,28 @@ end
 --- ### norm.Model:find
 --[[-
 This function attempts to find a row based on the `conditions`, returning a [norm.model.Inst](#normmodelinst) object and an error string
+If condition is a string, it is appended in a `WHERE` clause directly
+If condition is a hashmap, it is formatterd into a `WHERE` clause
 If no error occurs, the string is empty
 -]]
 ---`
-function norm.Model:find(conditions: hashmap(string, string)): (norm.Model.Inst, string)
+function norm.Model:find(conditions: overload(string, hashmap(string, string))): (norm.Model.Inst, string)
 ---`
   local sb: stringbuilder
   sb:writef("SELECT * FROM %s ", norm.escape_identifier(self.tbl_name))
   local row: hashmap(string, string)
-  if next(conditions) then
-    sb:write("WHERE ")
-    for k, v in pairs(conditions) do
-      sb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
+  ## if conditions.type.is_string then
+    sb:writef(" WHERE %s", conditions)
+  ## elseif conditions.type.is_hashmap then
+    if next(conditions) then
+      sb:write(" WHERE")
+      for k, v in pairs(conditions) do
+        sb:writef(" %s = %s AND", norm.escape_identifier(k), norm.escape_literal(v))
+      end
+      sb:rollback(#(" AND"))
     end
-    sb:rollback(#("AND "))
-  end
-  sb:write("LIMIT 1")
+  ## end
+  sb:write(" LIMIT 1")
   local rows, err = self.db:query(sb:promote())
   if err ~= "" then
     return {}, err
@@ -961,9 +976,9 @@ function norm.Model:count(conditions: overload(niltype, string, hashmap(string, 
     if next(conditions) then
       sb:write(" WHERE")
       for k, v in pairs(conditions) do
-        sb:writef("%s = %s AND ", norm.escape_identifier(k), norm.escape_literal(v))
+        sb:writef(" %s = %s AND", norm.escape_identifier(k), norm.escape_literal(v))
       end
-      sb:rollback(#("AND "))
+      sb:rollback(#(" AND"))
     end
   ## end
   local rows, err = self.db:query(sb:promote())
@@ -976,17 +991,32 @@ end
 --- ### norm.Model:select
 --[[-
 This function attempts to find rows based on the `conditions`, returning a sequence of [norm.model.Inst](#normmodelinst) objects and an error string
+If condition is a string, it is appended in a `WHERE` clause directly
+If condition is a hashmap, it is formatterd into a `WHERE` clause
+If no condition is provided then every row in the table will be returned
 If no error occurs, the string is empty
 -]]
 ---`
-function norm.Model:select(conditions: hashmap(string, string)): (sequence(norm.Model.Inst), string)
+function norm.Model:select(conditions: overload(niltype, string, hashmap(string, string))): (sequence(norm.Model.Inst), string)
 ---`
-  local sql = "* FROM " .. norm.escape_identifier(self.tbl_name)
-  local result: sequence(norm.Model.Inst)
-  local rows, err = self.db:select(sql, conditions)
+  local sb: stringbuilder
+  sb:writef("SELECT * FROM %s", norm.escape_identifier(self.tbl_name))
+  ## if conditions.type.is_string then
+    sb:writef(" WHERE %s", conditions)
+  ## elseif conditions.type.is_hashmap then
+    if next(conditions) then
+      sb:write(" WHERE")
+      for k, v in pairs(conditions) do
+        sb:writef(" %s = %s AND", norm.escape_identifier(k), norm.escape_literal(v))
+      end
+      sb:rollback(#(" AND"))
+    end
+  ## end
+  local rows, err = self.db:query(sb:promote())
   if err ~= "" then
     return {}, err
   end
+  local result: sequence(norm.Model.Inst)
   for _, row in ipairs(rows) do
     result:push({      
       parent = self,
