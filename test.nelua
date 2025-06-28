@@ -58,141 +58,132 @@ mild_assert!(err == "", err)
 -- Migration tests
 local schema = norm.Schema
 local type = schema.ColumnType
-local err = norm.migrate(db, {
-  {
-    "1",
-    function(db: norm.Db): string
-      local err: string
-      switch db.kind do
-        case norm.DbKind.sqlite then
-          err = schema.create_table(db, "users", {
-            {"id", type.integer, { primary_key = true }},
-            {"name", type.text, { unique = true }},
-            {"age", type.integer}
-          })
-        case norm.DbKind.pg then
-          err = schema.create_table(db, "users", {
-            {"id", type.serial, { primary_key = true }},
-            {"name", type.text, { unique = true }},
-            {"age", type.integer},
-          })
-        case norm.DbKind.mysql then
-          err = schema.create_table(db, "users", {
-            {"id", type.id, { primary_key = true }},
-            {"name", type.text, { unique = true }},
-            {"age", type.integer},
-          })
-        else
-          err = "UNKONWN DB kind for migration 1"
-      end
-      if err ~= "" then
-        return err
-      end
-
-      return ""
+local err = norm.migrate(db, inline_map!(string, norm.Schema.MigrationFn, {
+  ["1"] = function(db: norm.Db): string
+    local err: string
+    switch db.kind do
+      case norm.DbKind.sqlite then
+        err = schema.create_table(db, "users", {
+          {"id", type.integer, { primary_key = true }},
+          {"name", type.text, { unique = true }},
+          {"age", type.integer}
+        })
+      case norm.DbKind.pg then
+        err = schema.create_table(db, "users", {
+          {"id", type.serial, { primary_key = true }},
+          {"name", type.text, { unique = true }},
+          {"age", type.integer},
+        })
+      case norm.DbKind.mysql then
+        err = schema.create_table(db, "users", {
+          {"id", type.id, { primary_key = true }},
+          {"name", type.text, { unique = true }},
+          {"age", type.integer},
+        })
+      else
+        err = "UNKONWN DB kind for migration 1"
     end
-  },
-  {
-    "2",
-    function(db: norm.Db): string
-      local err: string
-      switch db.kind do
-        case norm.DbKind.sqlite then
-          err = schema.create_table(db, "players", {
-            {"id", type.integer, { primary_key = true }},
-            {"name", type.text, { unique = true }},
-            {"age", type.integer}
-          })
-        case norm.DbKind.pg then
-          err = schema.create_table(db, "players", {
-            {"id", type.serial, { primary_key = true }},
-            {"name", type.text, { unique = true }},
-            {"age", type.integer}
-          })
-        case norm.DbKind.mysql then
-          err = schema.create_table(db, "players", {
-            {"id", type.id, { primary_key = true }},
-            {"name", type.text, { unique = true }},
-            {"age", type.integer}
-          })
-        else
-          err = "UNKONWN DB kind for migration 2"
-      end
-      if err ~= "" then
-        return err
-      end
-      local err = schema.create_index(db, "users", {"name", "age"}, {unique = true})
-      if err ~= "" then
-        return err
-      end
-
-      return ""
-    end
-  },
-  {
-    "3",
-    function(db: norm.Db): string
-      local err = schema.drop_index(db, "users", {"name", "age"})
-      if err ~= "" then
-        return err
-      end
-      local err = schema.add_column(db, "users", {"height", type.integer})
-      if err ~= "" then
-        return err
-      end
-      local err = schema.rename_column(db, "users", "height", "length")
-      if err ~= "" then
-        return err
-      end
-      local err = schema.drop_column(db, "users", "length")
-      if err ~= "" then
-        return err
-      end
-      local err = schema.rename_table(db, "players", "sportsmen")
-      if err ~= "" then
-        return err
-      end
-      local err = schema.drop_table(db, "sportsmen")
-      if err ~= "" then
-        return err
-      end
-
-      return ""
-    end
-  },
-  {
-    "4",
-    function(db: norm.Db): string
-      local err: string
-      switch db.kind do
-        case norm.DbKind.sqlite then
-          err = schema.create_table(db, "players", {
-            {"id", type.integer, { primary_key = true }},
-            {"name", type.text, { unique = true }},
-            {"age", type.integer},
-            {"user_id", type.integer}
-          })
-        case norm.DbKind.pg then
-          err = schema.create_table(db, "players", {
-            {"id", type.serial, { primary_key = true }},
-            {"name", type.text, { unique = true }},
-            {"age", type.integer},
-            {"user_id", type.integer}
-          })
-        case norm.DbKind.mysql then
-          err = schema.create_table(db, "players", {
-            {"id", type.id, { primary_key = true }},
-            {"name", type.text, { unique = true }},
-            {"age", type.integer},
-            {"user_id", type.integer}
-          })
-        else
-          err = "UNKONWN DB kind for migration 4"
-      end
+    if err ~= "" then
       return err
     end
-  }
-})
+
+    return ""
+  end,
+
+  ["2"] = function(db: norm.Db): string
+    local err: string
+    switch db.kind do
+      case norm.DbKind.sqlite then
+        err = schema.create_table(db, "players", {
+          {"id", type.integer, { primary_key = true }},
+          {"name", type.text, { unique = true }},
+          {"age", type.integer}
+        })
+      case norm.DbKind.pg then
+        err = schema.create_table(db, "players", {
+          {"id", type.serial, { primary_key = true }},
+          {"name", type.text, { unique = true }},
+          {"age", type.integer}
+        })
+      case norm.DbKind.mysql then
+        err = schema.create_table(db, "players", {
+          {"id", type.id, { primary_key = true }},
+          {"name", type.text, { unique = true }},
+          {"age", type.integer}
+        })
+      else
+        err = "UNKONWN DB kind for migration 2"
+    end
+    if err ~= "" then
+      return err
+    end
+    local err = schema.create_index(db, "users", {"name", "age"}, {unique = true})
+    if err ~= "" then
+      return err
+    end
+
+    return ""
+  end,
+
+  ["3"] = function(db: norm.Db): string
+    local err = schema.drop_index(db, "users", {"name", "age"})
+    if err ~= "" then
+      return err
+    end
+    local err = schema.add_column(db, "users", {"height", type.integer})
+    if err ~= "" then
+      return err
+    end
+    local err = schema.rename_column(db, "users", "height", "length")
+    if err ~= "" then
+      return err
+    end
+    local err = schema.drop_column(db, "users", "length")
+    if err ~= "" then
+      return err
+    end
+    local err = schema.rename_table(db, "players", "sportsmen")
+    if err ~= "" then
+      return err
+    end
+    local err = schema.drop_table(db, "sportsmen")
+    if err ~= "" then
+      return err
+    end
+
+    return ""
+  end,
+
+  ["4"] = function(db: norm.Db): string
+    local err: string
+    switch db.kind do
+      case norm.DbKind.sqlite then
+        err = schema.create_table(db, "players", {
+          {"id", type.integer, { primary_key = true }},
+          {"name", type.text, { unique = true }},
+          {"age", type.integer},
+          {"user_id", type.integer}
+        })
+      case norm.DbKind.pg then
+        err = schema.create_table(db, "players", {
+          {"id", type.serial, { primary_key = true }},
+          {"name", type.text, { unique = true }},
+          {"age", type.integer},
+          {"user_id", type.integer}
+        })
+      case norm.DbKind.mysql then
+        err = schema.create_table(db, "players", {
+          {"id", type.id, { primary_key = true }},
+          {"name", type.text, { unique = true }},
+          {"age", type.integer},
+          {"user_id", type.integer}
+        })
+      else
+        err = "UNKONWN DB kind for migration 4"
+    end
+    return err
+  end
+}))
 mild_assert!(err == "", err)
 
 -- Generic tests

@@ -370,13 +370,10 @@ end
 local norm.Schema = @record{}
 ---`
 
---- ### norm.Schema.Migration
---- This record is used in [norm.migrate](#normmigrate) to define a migration and what action is taken when that migration is called
+--- ### norm.Schema.MigrationFn
+--- Type alias for what a migration function is in [norm.migrate](#normmigrate)
 ---`
-local norm.Schema.Migration = @record{
-  name: string,
-  fn: function(db: norm.Db): string
-}
+local norm.Schema.MigrationFn = @function(db: norm.Db): string
 ---`
 
 --- ### norm.Schema.ColumnOptions
@@ -506,23 +503,26 @@ local function db_get_migrated(db: norm.Db): hashmap(string, boolean)
   return migrated
 end
 
-local function db_migrate(db: norm.Db, migrated: hashmap(string, boolean), migrations: sequence(norm.Schema.Migration)): (uinteger, string)
+local function db_migrate(db: norm.Db, migrated: hashmap(string, boolean), migrations: hashmap(string, norm.Schema.MigrationFn)): (uinteger, string)
   local ran_migrations: uinteger
   defer
     migrated:destroy()
     migrations:destroy()
   end
-  for _, v in ipairs(migrations) do
-    if not migrated:has(v.name) then
-      local log_str = AnsiColor.new("Migrating: "):Bright():Yellow():text() .. AnsiColor.new(v.name):Green():Bright():text()
+  for k, v in pairs(migrations) do
+    if k == "" then
+      return 0, "Migration name cannot be an empty string"
+    end
+    if not migrated:has(k) then
+      local log_str = AnsiColor.new("Migrating: "):Bright():Yellow():text() .. AnsiColor.new(k):Green():Bright():text()
       logger.log(db.log, log_str)
       local vals: hashmap(string, string)
-      vals["migration"] = v.name
+      vals["migration"] = k
       db:insert("norm_migrations", vals)
-      for k in pairs(migrated) do
-        k:destroy()
+      for m in pairs(migrated) do
+        m:destroy()
       end
-      local create_err = v.fn(db)
+      local create_err = v(db)
       if create_err ~= "" then
         return 0, create_err
       end
@@ -784,7 +784,7 @@ This function runs all `migrations`, returning an error string
 If no error occurs, the string is empty
 -]]
 ---`
-function norm.migrate(db: norm.Db, migrations: sequence(norm.Schema.Migration)): string
+function norm.migrate(db: norm.Db, migrations: hashmap(string, norm.Schema.MigrationFn)): string
 ---`
   local log_str = AnsiColor.new("Running migrations"):Bright():Yellow():text()
   logger.log(db.log, log_str)

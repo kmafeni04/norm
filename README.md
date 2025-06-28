@@ -280,15 +280,12 @@ This is a collection of types and function for creating and managing your databa
 local norm.Schema = @record{}
 ```
 
-### norm.Schema.Migration
+### norm.Schema.MigrationFn
 
-This record is used in [norm.migrate](#normmigrate) to define a migration and what action is taken when that migration is called
+Type alias for what a migration function is in [norm.migrate](#normmigrate)
 
 ```lua
-local norm.Schema.Migration = @record{
-  name: string,
-  fn: function(db: norm.Db): string
-}
+local norm.Schema.MigrationFn = @function(db: norm.Db): string
 ```
 
 ### norm.Schema.ColumnOptions
@@ -438,7 +435,7 @@ This function runs all `migrations`, returning an error string
 If no error occurs, the string is empty
 
 ```lua
-function norm.migrate(db: norm.Db, migrations: sequence(norm.Schema.Migration)): string
+function norm.migrate(db: norm.Db, migrations: hashmap(string, norm.Schema.MigrationFn)): string
 ```
 
 ### norm.RelationKind
