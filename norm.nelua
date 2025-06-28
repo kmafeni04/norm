@@ -1149,7 +1149,7 @@ function norm.Model.Inst:get_belongs_to(rel_name: string): (norm.Model.Inst, str
       end
       local ok, model_ptr = self.parent.db.models:has_and_get(rel.model_name)
       if not ok then
-        return {}, ("Realtion's model `%s` does not exist on this db instance"):format(rel.model_name)
+        return {}, ("Relation's model `%s` does not exist on this db instance"):format(rel.model_name)
       end
       if not model_ptr then
         return {}, ("Model `%s` in db instance is a nilptr"):format(rel.model_name)

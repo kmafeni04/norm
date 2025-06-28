@@ -208,7 +208,7 @@ local err = db:delete("users", inline_map!(string, string, {
 mild_assert!(err == "", err)
 
 local model = norm.Model
-local Users, err = model.new(db, "users", "Users")
+local Users, err = model.new(&db, "users", "Users")
 mild_assert!(err == "", err)
 
 local user, err = Users:create(inline_map!(string, string, {
@@ -232,7 +232,7 @@ Users = nilptr
 
 -- Relations test
 local model = norm.Model
-local Users, err = model.new(db, "users", "Users",{
+local Users, err = model.new(&db, "users", "Users",{
   rels = {
     {
       kind = norm.RelationKind.has_one,
@@ -252,7 +252,7 @@ local user, err = Users:create(inline_map!(string, string, {
 
 mild_assert!(err == "", err)
 
-local Players, err = model.new(db, "players", "Players", {
+local Players, err = model.new(&db, "players", "Players", {
   rels = {
     {
       kind = norm.RelationKind.belongs_to,
@@ -289,7 +289,7 @@ mild_assert!(player_name == "Jack")
 
 Users:destroy()
 
-local Users, err = model.new(db, "users", "Users",{
+local Users, err = model.new(&db, "users", "Users",{
   rels = {
     {
       kind = norm.RelationKind.has_many,
