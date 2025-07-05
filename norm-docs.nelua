@@ -35,33 +35,16 @@ local db, err = norm.Db.new({
 -- Create and run your Db migrations
 local schema = norm.Schema
 local type = schema.ColumnType
-local err = norm.migrate(db, {
-  {
-    "1",
-    function(db: norm.Db): string
-      local err: string
-      err = schema.create_table(db, "users", {
-        {"id", type.integer, { primary_key = true }},
-        {"name", type.text, { unique = true }},
-        {"age", type.integer}
-      })
-      if err ~= "" then
-        return err
-      end
-
-      err = schema.create_table(db, "players", {
-        {"id", type.integer, { primary_key = true }},
-        {"name", type.text, { unique = true }},
-        {"age", type.integer}
-      })
-      if err ~= "" then
-        return err
-      end
-
-      return ""
-    end
-  }
-}
+local migrations: hashmap(string, norm.Schema.MigrationFn)
+migrations["1"] = function(db: norm.Db): string
+  local err = schema.create_table(db, "users", {
+    {"id", type.integer, { primary_key = true }},
+    {"name", type.text, { unique = true }},
+    {"age", type.integer}
+  })
+  return err
+end
+local err = norm.migrate(db, migrations)
 
 -- Insert a value into the users table
 local users_insert: hashmap(string, string)
