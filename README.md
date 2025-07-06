@@ -325,6 +325,19 @@ local norm.Schema.Column = @record{
 }
 ```
 
+### norm.Schema.CreateTableOpts
+
+These are options used to customise the creation of a table, see [norm.Schema.create_table](#normschemacreate_table)
+- `if_not_exists`: Changes the table creation prefix to "CREATE TABLE IF NOT EXISTS"
+- `strict`: For sqlite, appends "STRICT" immediately after the closing `)` to make the table a strict table
+
+```lua
+local norm.Schema.CreateTableOpts = @record{
+  if_not_exists: boolean,
+  strict: boolean
+}
+```
+
 ### norm.Schema.create_table
 
 This function creates a table, `name`, with the specified `columns` returning an error string
@@ -332,7 +345,13 @@ This function creates a table, `name`, with the specified `columns` returning an
 If no error occurs, the string is empty
 
 ```lua
-function norm.Schema.create_table(db: norm.Db, name: string, columns: sequence(norm.Schema.Column), extra_sql: string): string
+function norm.Schema.create_table(
+  db: norm.Db,
+  name: string,
+  columns: sequence(norm.Schema.Column),
+  extra_sql: string,
+  opts: norm.Schema.CreateTableOpts
+): string
 ```
 
 ### norm.Schema.drop_table
@@ -346,7 +365,7 @@ function norm.Schema.drop_table(db: norm.Db, name: string): string
 
 ### norm.Schema.IndexOpts
 
-These are options used to customise the create of an index in a table, see (norm.Schema.create_index)[normschemacreate_index]
+These are options used to customise the creation of an index in a table, see [norm.Schema.create_index](#normschemacreate_index)
 
 ```lua
 local norm.Schema.IndexOpts = @record{

@@ -586,6 +586,19 @@ local norm.Schema.Column = @record{
 }
 ---`
 
+--- ### norm.Schema.CreateTableOpts
+--[[-
+These are options used to customise the creation of a table, see [norm.Schema.create_table](#normschemacreate_table)
+- `if_not_exists`: Changes the table creation prefix to "CREATE TABLE IF NOT EXISTS"
+- `strict`: For sqlite, appends "STRICT" immediately after the closing `)` to make the table a strict table
+-]]
+---`
+local norm.Schema.CreateTableOpts = @record{
+  if_not_exists: boolean,
+  strict: boolean
+}
+---`
+
 --- ### norm.Schema.create_table
 --[[-
 This function creates a table, `name`, with the specified `columns` returning an error string
@@ -593,7 +606,13 @@ This function creates a table, `name`, with the specified `columns` returning an
 If no error occurs, the string is empty
 -]]
 ---`
-function norm.Schema.create_table(db: norm.Db, name: string, columns: sequence(norm.Schema.Column), extra_sql: string): string
+function norm.Schema.create_table(
+  db: norm.Db,
+  name: string,
+  columns: sequence(norm.Schema.Column),
+  extra_sql: string,
+  opts: norm.Schema.CreateTableOpts
+): string
 ---`
   if name == "" then
     return "table name cannot be an empty string"
@@ -602,7 +621,11 @@ function norm.Schema.create_table(db: norm.Db, name: string, columns: sequence(n
     return "Cannot have an empty list of columns"
   end
   local sb: stringbuilder
-  sb:writef("CREATE TABLE IF NOT EXISTS %s (\n", norm.escape_identifier(name))
+  sb:write("CREATE TABLE")
+  if opts.if_not_exists then
+    sb:write(" IF NOT EXISTS")
+  end
+  sb:writef(" %s (\n", norm.escape_identifier(name))
   for i, v in ipairs(columns) do
     if v.name == "" then
       return "column name cannot be an empty string"
@@ -618,6 +641,9 @@ function norm.Schema.create_table(db: norm.Db, name: string, columns: sequence(n
     sb:writef(",\n %s", extra_sql)
   end
   sb:write("\n)")
+  if opts.strict and db.kind == norm.DbKind.sqlite then
+    sb:write(" STRICT")
+  end
   local sql = sb:promote()
 
   return db_run(db, sql)
@@ -636,7 +662,7 @@ function norm.Schema.drop_table(db: norm.Db, name: string): string
 end
 
 --- ### norm.Schema.IndexOpts
---- These are options used to customise the create of an index in a table, see (norm.Schema.create_index)[normschemacreate_index]
+--- These are options used to customise the creation of an index in a table, see [norm.Schema.create_index](#normschemacreate_index)
 ---`
 local norm.Schema.IndexOpts = @record{
   where: string,
