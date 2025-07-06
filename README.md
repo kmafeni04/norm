@@ -2,6 +2,14 @@
 
 A database ORM for the [nelua](https://www.nelua.io) programming language
 
+## Requirements
+- nelua
+- postgres
+- mysql
+- sqlite
+
+NB: The db requirements are only specific to whatever databases you make use of in your program
+
 ## Quick Start
 
 ```lua
