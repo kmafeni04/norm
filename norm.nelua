@@ -1014,6 +1014,18 @@ function norm.Model:count(conditions: overload(niltype, string, hashmap(string, 
   return tonumber(rows[1]["count"]), ""
 end
 
+--- ### norm.Model.SelectOpts
+--[[-
+`fields`: Set the returned fields of the query, default is "*"
+`extra_sql`: Appened at the end of the generated `WHERE` clause
+-]]
+---`
+local norm.Model.SelectOpts = @record{
+  fields: sequence(string),
+  extra_sql: string
+}
+---`
+
 --- ### norm.Model:select
 --[[-
 This function attempts to find rows based on the `conditions`, returning a sequence of [norm.model.Inst](#normmodelinst) objects and an error string
@@ -1023,10 +1035,10 @@ If no condition is provided then every row in the table will be returned
 If no error occurs, the string is empty
 -]]
 ---`
-function norm.Model:select(conditions: overload(niltype, string, hashmap(string, string))): (sequence(norm.Model.Inst), string)
+function norm.Model:select(conditions: overload(niltype, string, hashmap(string, string)), opts: norm.Model.SelectOpts): (sequence(norm.Model.Inst), string)
 ---`
   local sb: stringbuilder
-  sb:writef("SELECT * FROM %s", norm.escape_identifier(self.tbl_name))
+  sb:writef("SELECT %s FROM %s", #opts.fields > 0 and string.concat(opts.fields, ", ") or "*", norm.escape_identifier(self.tbl_name))
   ## if conditions.type.is_string then
     sb:writef(" WHERE %s", conditions)
   ## elseif conditions.type.is_hashmap then
@@ -1038,6 +1050,9 @@ function norm.Model:select(conditions: overload(niltype, string, hashmap(string,
       sb:rollback(#(" AND"))
     end
   ## end
+  if opts.extra_sql ~= "" then
+    sb:writef(" %s", opts.extra_sql)
+  end
   local rows, err = self.db:query(sb:promote())
   if err ~= "" then
     return {}, err

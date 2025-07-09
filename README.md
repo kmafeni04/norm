@@ -560,6 +560,18 @@ If no error occurs, the string is empty
 function norm.Model:count(conditions: overload(niltype, string, hashmap(string, string))): (integer, string)
 ```
 
+### norm.Model.SelectOpts
+
+`fields`: Set the returned fields of the query, default is "*"
+`extra_sql`: Appened at the end of the generated `WHERE` clause
+
+```lua
+local norm.Model.SelectOpts = @record{
+  fields: sequence(string),
+  extra_sql: string
+}
+```
+
 ### norm.Model:select
 
 This function attempts to find rows based on the `conditions`, returning a sequence of [norm.model.Inst](#normmodelinst) objects and an error string
@@ -569,7 +581,7 @@ If no condition is provided then every row in the table will be returned
 If no error occurs, the string is empty
 
 ```lua
-function norm.Model:select(conditions: overload(niltype, string, hashmap(string, string))): (sequence(norm.Model.Inst), string)
+function norm.Model:select(conditions: overload(niltype, string, hashmap(string, string)), opts: norm.Model.SelectOpts): (sequence(norm.Model.Inst), string)
 ```
 
 ### norm.Model:create

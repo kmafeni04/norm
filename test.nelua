@@ -330,6 +330,13 @@ local count, err = Users:count()
 mild_assert!(err == "", err)
 mild_assert!(count == 1)
 
+local users, err = Users:select(nil, {
+  fields = {norm.escape_identifier("name")},
+  extra_sql = "ORDER BY name ASC"
+})
+mild_assert!(err == "", err)
+mild_assert!(users[1]:get_col("age") == "")
+mild_assert!(users[1]:get_col("name") ~= "")
 
 ::ending::
 switch db.kind do
