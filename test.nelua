@@ -67,7 +67,7 @@ local err = norm.migrate(db, inline_map!(string, norm.Schema.MigrationFn, {
           {"id", type.integer, { primary_key = true }},
           {"name", type.text, { unique = true }},
           {"age", type.integer}
-        }, "", { strict = true })
+        }, { strict = true })
       case norm.DbKind.pg then
         err = schema.create_table(db, "users", {
           {"id", type.serial, { primary_key = true }},
