@@ -376,10 +376,10 @@ local norm.Schema = @record{}
 local norm.Schema.MigrationFn = @function(db: norm.Db): string
 ---`
 
---- ### norm.Schema.ColumnOptions
+--- ### norm.Schema.ColumnOpts
 --- These are options used to modify how a column is generated in [norm.Schema.Column](#normschemacolumn)
 ---`
-local norm.Schema.ColumnOptions = @record{
+local norm.Schema.ColumnOpts = @record{
   default_val: string,
   is_null: boolean,
   unique: boolean,
@@ -414,7 +414,7 @@ local norm.Schema.ColumnType: type = @enum{
 }
 ---`
 
-local function schema_type_tostring(db_kind: norm.DbKind, st: norm.Schema.ColumnType, opts: norm.Schema.ColumnOptions): (string, string)
+local function schema_type_tostring(db_kind: norm.DbKind, st: norm.Schema.ColumnType, opts: norm.Schema.ColumnOpts): (string, string)
   local sb: stringbuilder
   defer sb:destroy() end
   switch st do
@@ -582,7 +582,7 @@ end
 local norm.Schema.Column = @record{
   name: string,
   type: norm.Schema.ColumnType,
-  opts: norm.Schema.ColumnOptions
+  opts: norm.Schema.ColumnOpts
 }
 ---`
 

@@ -279,12 +279,12 @@ Type alias for what a migration function is in [norm.migrate](#normmigrate)
 local norm.Schema.MigrationFn = @function(db: norm.Db): string
 ```
 
-### norm.Schema.ColumnOptions
+### norm.Schema.ColumnOpts
 
 These are options used to modify how a column is generated in [norm.Schema.Column](#normschemacolumn)
 
 ```lua
-local norm.Schema.ColumnOptions = @record{
+local norm.Schema.ColumnOpts = @record{
   default_val: string,
   is_null: boolean,
   unique: boolean,
@@ -329,7 +329,7 @@ This defines the type of a column in [norm.Schema.Column](#normschemacolumn)
 local norm.Schema.Column = @record{
   name: string,
   type: norm.Schema.ColumnType,
-  opts: norm.Schema.ColumnOptions
+  opts: norm.Schema.ColumnOpts
 }
 ```
 
