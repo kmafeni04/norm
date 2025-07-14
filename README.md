@@ -505,6 +505,18 @@ local norm.Model = @record{
 }
 ```
 
+### norm.Model.Paginator
+
+Used to get model instances split by pages
+
+```lua
+local norm.Model.Paginator = @record{
+  parent: *norm.Model,
+  per_page: uinteger,
+  where: string
+}
+```
+
 ### norm.Model.Inst
 
 Model Instance
@@ -582,6 +594,42 @@ If no error occurs, the string is empty
 
 ```lua
 function norm.Model:select(conditions: overload(niltype, string, hashmap(string, string)), opts: norm.Model.SelectOpts): (sequence(norm.Model.Inst), string)
+```
+
+### norm.Model:PaginatorOpts
+
+`per_page` - Maximum number of instances returned per get_page request
+`order_by` - Field to order the request by, default is "id"
+`order` - How to order the request, default is "ASC"
+`fields` - Fields to be returned by the request, default is "*"
+
+```lua
+local norm.Model.PaginatorOpts = @record{
+  per_page: uinteger,
+  order_by: string,
+  order: string,
+  fields: sequence(string)
+}
+```
+
+### norm.Model:paginated
+
+This function returns a new Model Paginator object and an error string
+If condition is a string, it is appended in a `WHERE` clause directly
+If condition is a hashmap, it is formatterd into a `WHERE` clause
+If no error occurs, the string is empty
+
+```lua
+function norm.Model:paginated(conditions: overload(hashmap(string, string), string), opts: norm.Model.PaginatorOpts): (norm.Model.Paginator, string)
+```
+
+### norm.Model.Paginator:get_page
+
+This function gets `page`, where pages are 1 indexed returning the relevant sequence of model instances and an error string
+If no error occurs, the string is empty
+
+```lua
+function norm.Model.Paginator:get_page(page: uinteger): (sequence(norm.Model.Inst), string)
 ```
 
 ### norm.Model:create

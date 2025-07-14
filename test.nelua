@@ -338,6 +338,26 @@ mild_assert!(err == "", err)
 mild_assert!(users[1]:get_col("age") == "")
 mild_assert!(users[1]:get_col("name") ~= "")
 
+for i = 1, 20 do
+  local player, err = Players:create(inline_map!(string, string, {
+    name = "Player" .. i,
+    age = tostring(20 + i),
+    user_id = users[1]:get_col("id")
+  }))
+  mild_assert!(err == "", err)
+end
+
+local PlayersPaginator, err = Players:paginated(inline_map!(string, string, { user_id = users[1]:get_col("id") }))
+mild_assert!(err == "", err)
+
+local players, err = PlayersPaginator:get_page(1)
+mild_assert!(err == "", err)
+mild_assert!(#players == 10)
+
+local players, err = PlayersPaginator:get_page(2)
+mild_assert!(err == "", err)
+mild_assert!(#players == 10)
+
 ::ending::
 switch db.kind do
   case norm.DbKind.sqlite then

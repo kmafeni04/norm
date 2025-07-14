@@ -93,13 +93,13 @@ local norm.Db = @record{
 --- ### norm.Db.new
 --[[-
 This function returns a new [norm.Db](#normdb) object and an error string
-If no error occurs, an empty string is returned 
+If no error occurs, an empty string is returned
 -]]
 ---`
 function norm.Db.new(conf: norm.Config): (norm.Db, string)
 ---`
   switch conf.kind do
-    case norm.DbKind.not_set then      
+    case norm.DbKind.not_set then
       return {}, "DB object not initialised"
     case norm.DbKind.sqlite then
       local sqlite_db, err = sqlite.new(conf.conn.sqlite.name)
@@ -768,7 +768,7 @@ function norm.Schema.drop_column(db: norm.Db, tbl_name: string, col_name: string
 ---`
   local sql = ("ALTER TABLE %s DROP COLUMN %s"):format(
     norm.escape_identifier(tbl_name),
-    norm.escape_identifier(col_name)    
+    norm.escape_identifier(col_name)
   )
   return db_run(db, sql)
 end
@@ -783,8 +783,8 @@ function norm.Schema.rename_column(db: norm.Db, tbl_name: string, old_col_name: 
 ---`
   local sql = ("ALTER TABLE %s RENAME COLUMN %s to %s"):format(
     norm.escape_identifier(tbl_name),
-    norm.escape_identifier(old_col_name),    
-    norm.escape_identifier(new_col_name)    
+    norm.escape_identifier(old_col_name),
+    norm.escape_identifier(new_col_name)
   )
   return db_run(db, sql)
 end
@@ -799,7 +799,7 @@ function norm.Schema.rename_table(db: norm.Db, old_tbl_name: string, new_tbl_nam
 ---`
   local sql = ("ALTER TABLE %s RENAME to %s"):format(
     norm.escape_identifier(old_tbl_name),
-    norm.escape_identifier(new_tbl_name)    
+    norm.escape_identifier(new_tbl_name)
   )
   return db_run(db, sql)
 end
@@ -882,6 +882,16 @@ local norm.Model = @record{
   tbl_name: string,
   primary_keys: sequence(string),
   rels: sequence(norm.Relation)
+}
+---`
+
+--- ### norm.Model.Paginator
+--- Used to get model instances split by pages
+---`
+local norm.Model.Paginator = @record{
+  parent: *norm.Model,
+  per_page: uinteger,
+  where: string
 }
 ---`
 
@@ -1059,8 +1069,102 @@ function norm.Model:select(conditions: overload(niltype, string, hashmap(string,
   end
   local result: sequence(norm.Model.Inst)
   for _, row in ipairs(rows) do
-    result:push({      
+    result:push({
       parent = self,
+      row = row
+    })
+  end
+  return result, ""
+end
+
+--- ### norm.Model:PaginatorOpts
+--[[-
+`per_page` - Maximum number of instances returned per get_page request
+`order_by` - Field to order the request by, default is "id"
+`order` - How to order the request, default is "ASC"
+`fields` - Fields to be returned by the request, default is "*"
+-]]
+---`
+local norm.Model.PaginatorOpts = @record{
+  per_page: uinteger,
+  order_by: string,
+  order: string,
+  fields: sequence(string)
+}
+---`
+
+--- ### norm.Model:paginated
+--[[-
+This function returns a new Model Paginator object and an error string
+If condition is a string, it is appended in a `WHERE` clause directly
+If condition is a hashmap, it is formatterd into a `WHERE` clause
+If no error occurs, the string is empty
+-]]
+---`
+function norm.Model:paginated(conditions: overload(hashmap(string, string), string), opts: norm.Model.PaginatorOpts): (norm.Model.Paginator, string)
+---`
+  local sb: stringbuilder
+  sb:write("SELECT")
+  if #opts.fields > 0 then
+    for _, v in ipairs(opts.fields) do
+      sb:writef(" %s,", norm.escape_identifier(v))
+    end
+    sb:rollback(1)
+  else
+    sb:write(" *")
+  end
+  sb:writef(" FROM %s WHERE", norm.escape_identifier(self.tbl_name))
+  ## if conditions.type.is_hashmap then
+    if not next(conditions) then
+      return {}, "`conditions` cannot be an empty hashmap"
+    end
+    for k, v in pairs(conditions) do
+      sb:writef(" %s = %s AND", norm.escape_identifier(k), norm.escape_literal(v))
+    end
+    sb:rollback(#(" AND"))
+  ## elseif conditions.type.is_string then
+    if conditions == "" then
+      return {}, "`conditions` cannot be an empty string"
+    end
+    sb:write(conditions)
+  ## end
+  sb:writef(
+    " ORDER BY %s %s",
+    opts.order_by ~= "" and norm.escape_literal(opts.order_by) or '"id"',
+    opts.order ~= "" and opts.order or "ASC"
+  )
+
+  local where = sb:promote()
+
+  return {
+    parent = self,
+    per_page = opts.per_page ~= 0 and opts.per_page or 10,
+    where = where
+  }, ""
+end
+
+--- ### norm.Model.Paginator:get_page
+--[[-
+This function gets `page`, where pages are 1 indexed returning the relevant sequence of model instances and an error string
+If no error occurs, the string is empty
+-]]
+---`
+function norm.Model.Paginator:get_page(page: uinteger): (sequence(norm.Model.Inst), string)
+---`
+  if page == 0 then
+    return {}, "`page` cannot be 0"
+  end
+  if not self.parent then
+    return {}, "This paginator's parent does not exist"
+  end
+  local rows, err = self.parent.db:query(self.where .. " LIMIT " .. self.per_page .. " OFFSET " .. self.per_page * page - self.per_page)
+  if err ~= "" then
+    return {}, err
+  end
+  local result: sequence(norm.Model.Inst)
+  for _, row in ipairs(rows) do
+    result:push({
+      parent = self.parent,
       row = row
     })
   end
@@ -1086,7 +1190,7 @@ function norm.Model:create(values: hashmap(string, string), returning: facultati
   if err ~= "" then
     return {}, err
   end
-  return {      
+  return {
     parent = self,
     row = rows[1]
   }, ""
@@ -1107,7 +1211,7 @@ function norm.Model.Inst:get_col(name: string): (string, string)
   if not ok then
     return "", ""
   end
-  return v, "" 
+  return v, ""
 end
 
 --- ### norm.Model.Inst:update
