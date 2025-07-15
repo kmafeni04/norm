@@ -98,7 +98,7 @@ local err = norm.migrate(db, inline_map!(string, norm.Schema.MigrationFn, {
           {"id", type.integer, { primary_key = true }},
           {"name", type.text, { unique = true }},
           {"age", type.integer}
-        })
+        }, {strict = true })
       case norm.DbKind.pg then
         err = schema.create_table(db, "players", {
           {"id", type.serial, { primary_key = true }},
@@ -163,7 +163,7 @@ local err = norm.migrate(db, inline_map!(string, norm.Schema.MigrationFn, {
           {"name", type.text, { unique = true }},
           {"age", type.integer},
           {"user_id", type.integer}
-        })
+        }, { strict = true })
       case norm.DbKind.pg then
         err = schema.create_table(db, "players", {
           {"id", type.serial, { primary_key = true }},
@@ -338,16 +338,22 @@ mild_assert!(err == "", err)
 mild_assert!(users[1]:get_col("age") == "")
 mild_assert!(users[1]:get_col("name") ~= "")
 
+local user, err = Users:create(inline_map!(string, string, {
+  name = "User1",
+  age = "20"
+}))
+mild_assert!(err == "", err)
+
 for i = 1, 20 do
   local player, err = Players:create(inline_map!(string, string, {
     name = "Player" .. i,
     age = tostring(20 + i),
-    user_id = users[1]:get_col("id")
+    user_id = user:get_col("id")
   }))
   mild_assert!(err == "", err)
 end
 
-local PlayersPaginator, err = Players:offset_paginated(inline_map!(string, string, { user_id = users[1]:get_col("id") }))
+local PlayersPaginator, err = Players:offset_paginated(inline_map!(string, string, { user_id = user:get_col("id") }))
 mild_assert!(err == "", err)
 
 local players, err = PlayersPaginator:get_page(1)
