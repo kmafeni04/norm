@@ -364,6 +364,15 @@ local players, err = PlayersPaginator:get_page(2)
 mild_assert!(err == "", err)
 mild_assert!(#players == 10)
 
+local total_players, err = PlayersPaginator:total_items()
+mild_assert!(err == "", err)
+mild_assert!(total_players == 20)
+
+local total_pages, err = PlayersPaginator:total_pages()
+mild_assert!(err == "", err)
+mild_assert!(total_pages == 2)
+
+
 ::ending::
 switch db.kind do
   case norm.DbKind.sqlite then

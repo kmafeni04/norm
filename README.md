@@ -513,6 +513,7 @@ Used to get model instances split by pages
 local norm.Model.OffsetPaginator = @record{
   parent: *norm.Model,
   per_page: uinteger,
+  fields: sequence(string),
   where: string
 }
 ```
@@ -630,6 +631,24 @@ If no error occurs, the string is empty
 
 ```lua
 function norm.Model.OffsetPaginator:get_page(page: uinteger): (sequence(norm.Model.Inst), string)
+```
+
+### norm.Model.OffsetPaginator:total_items
+
+This function returns the total number of items based of the paginators where clause and an error string
+If no error occurs, the string is empty
+
+```lua
+function norm.Model.OffsetPaginator:total_items(): (integer, string)
+```
+
+### norm.Model.OffsetPaginator:total_pages
+
+This function returns the total number of pages based of the paginators where clause and an error string
+If no error occurs, the string is empty
+
+```lua
+function norm.Model.OffsetPaginator:total_pages(): (integer, string)
 ```
 
 ### norm.Model:create

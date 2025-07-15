@@ -1,6 +1,7 @@
 --- ## norm.nelua
 
 require "io"
+require "math"
 
 require ".thirdparty.inline_map"
 
@@ -891,6 +892,7 @@ local norm.Model = @record{
 local norm.Model.OffsetPaginator = @record{
   parent: *norm.Model,
   per_page: uinteger,
+  fields: sequence(string),
   where: string
 }
 ---`
@@ -1104,16 +1106,13 @@ If no error occurs, the string is empty
 function norm.Model:offset_paginated(conditions: overload(hashmap(string, string), string), opts: norm.Model.OffsetPaginatorOpts): (norm.Model.OffsetPaginator, string)
 ---`
   local sb: stringbuilder
-  sb:write("SELECT")
+  local fields: sequence(string)
   if #opts.fields > 0 then
-    for _, v in ipairs(opts.fields) do
-      sb:writef(" %s,", norm.escape_identifier(v))
-    end
-    sb:rollback(1)
+    fields = opts.fields
   else
-    sb:write(" *")
+    fields:push("*")
   end
-  sb:writef(" FROM %s WHERE", norm.escape_identifier(self.tbl_name))
+  sb:writef("FROM %s WHERE", norm.escape_identifier(self.tbl_name))
   ## if conditions.type.is_hashmap then
     if not next(conditions) then
       return {}, "`conditions` cannot be an empty hashmap"
@@ -1139,6 +1138,7 @@ function norm.Model:offset_paginated(conditions: overload(hashmap(string, string
   return {
     parent = self,
     per_page = opts.per_page ~= 0 and opts.per_page or 10,
+    fields = fields,
     where = where
   }, ""
 end
@@ -1157,7 +1157,16 @@ function norm.Model.OffsetPaginator:get_page(page: uinteger): (sequence(norm.Mod
   if not self.parent then
     return {}, "This paginator's parent does not exist"
   end
-  local rows, err = self.parent.db:query(self.where .. " LIMIT " .. self.per_page .. " OFFSET " .. self.per_page * page - self.per_page)
+  local rows, err = self.parent.db:query(
+    "SELECT "
+    .. string.concat(self.fields, ",")
+    .. " "
+    .. self.where
+    .. " LIMIT "
+    .. self.per_page
+    .. " OFFSET "
+    .. self.per_page * page - self.per_page
+  )
   if err ~= "" then
     return {}, err
   end
@@ -1169,6 +1178,37 @@ function norm.Model.OffsetPaginator:get_page(page: uinteger): (sequence(norm.Mod
     })
   end
   return result, ""
+end
+
+--- ### norm.Model.OffsetPaginator:total_items
+--[[-
+This function returns the total number of items based of the paginators where clause and an error string
+If no error occurs, the string is empty
+-]]
+---`
+function norm.Model.OffsetPaginator:total_items(): (integer, string)
+---`
+  local sql = "SELECT COUNT(*) AS count "
+  local rows, err = self.parent.db:query(sql .. self.where)
+  if err ~= "" then
+    return 0, err
+  end
+  return tonumber(rows[1]["count"]), ""
+end
+
+--- ### norm.Model.OffsetPaginator:total_pages
+--[[-
+This function returns the total number of pages based of the paginators where clause and an error string
+If no error occurs, the string is empty
+-]]
+---`
+function norm.Model.OffsetPaginator:total_pages(): (integer, string)
+---`
+  local items, err = self:total_items()
+  if err ~= "" then
+    return 0, err
+  end
+  return math.ceil(items/self.per_page), ""
 end
 
 --- ### norm.Model:create
