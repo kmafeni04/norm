@@ -439,13 +439,13 @@ If no error occurs, the string is empty
 function norm.Schema.rename_table(db: norm.Db, old_tbl_name: string, new_tbl_name: string): string
 ```
 
-### norm.migrate
+### norm.Schema.migrate
 
 This function runs all `migrations`, returning an error string
 If no error occurs, the string is empty
 
 ```lua
-function norm.migrate(db: norm.Db, migrations: hashmap(string, norm.Schema.MigrationFn)): string
+function norm.Schema.migrate(db: norm.Db, migrations: hashmap(string, norm.Schema.MigrationFn)): string
 ```
 
 ### norm.RelationKind

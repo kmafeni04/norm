@@ -58,7 +58,7 @@ mild_assert!(err == "", err)
 -- Migration tests
 local schema = norm.Schema
 local type = schema.ColumnType
-local err = norm.migrate(db, inline_map!(string, norm.Schema.MigrationFn, {
+local err = schema.migrate(db, inline_map!(string, norm.Schema.MigrationFn, {
   ["1"] = function(db: norm.Db): string
     local err: string
     switch db.kind do
