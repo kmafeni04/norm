@@ -514,6 +514,8 @@ local norm.Model.OffsetPaginator = @record{
   parent: *norm.Model,
   per_page: uinteger,
   fields: sequence(string),
+  order_by: string,
+  order: string,
   where: string
 }
 ```

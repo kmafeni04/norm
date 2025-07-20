@@ -1,6 +1,6 @@
 require "..thirdparty.sqlite"
 
-local AnsiColor = require "..thirdparty.ansicolor"
+local AnsiColor = require "ansicolor"
 local logger = require ".logger"
 
 local M = @record{}
@@ -60,7 +60,7 @@ function M.rollback(db: *sqlite3)
 end
 
 function M.query(log: logger.NotSetOrBool, db: *sqlite3, sql: string): (sequence(hashmap(string, string)), string)
-  local log_str = AnsiColor.new("SQL: "):Cyan():Bright():text() .. AnsiColor.new(sql):Magenta():text()
+  local log_str = AnsiColor.new("SQL: "):Cyan():Bright():tostring() .. AnsiColor.new(sql):Magenta():tostring()
   logger.log(log, log_str)
 
   local rows: sequence(hashmap(string, string))

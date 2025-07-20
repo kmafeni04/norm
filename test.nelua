@@ -1,7 +1,7 @@
 require "io"
 require "os"
 
-require "thirdparty.inline_map"
+require "map"
 
 ## local function mild_assert(cond, message)
   do
@@ -58,7 +58,7 @@ mild_assert!(err == "", err)
 -- Migration tests
 local schema = norm.Schema
 local type = schema.ColumnType
-local err = schema.migrate(db, inline_map!(string, norm.Schema.MigrationFn, {
+local err = schema.migrate(db, map!(string, norm.Schema.MigrationFn, {
   ["1"] = function(db: norm.Db): string
     local err: string
     switch db.kind do
@@ -187,20 +187,20 @@ local err = schema.migrate(db, inline_map!(string, norm.Schema.MigrationFn, {
 mild_assert!(err == "", err)
 
 -- Generic tests
-local rows, err = db:insert("users", inline_map!(string, string, {
+local rows, err = db:insert("users", map!(string, string, {
   name = "James",
   age = "21"
 }))
 mild_assert!(err == "", err)
 
-local rows, err = db:select("* FROM users", inline_map!(string, string, {
+local rows, err = db:select("* FROM users", map!(string, string, {
   name = "James",
   age = "21"
 }))
 
 mild_assert!(err == "", err)
 
-local err = db:delete("users", inline_map!(string, string, {
+local err = db:delete("users", map!(string, string, {
   name = "James",
   age = "21"
 }))
@@ -211,14 +211,14 @@ local model = norm.Model
 local Users, err = model.new(&db, "users", "Users")
 mild_assert!(err == "", err)
 
-local user, err = Users:create(inline_map!(string, string, {
+local user, err = Users:create(map!(string, string, {
   name = "James",
   age = "21"
 }))
 
 mild_assert!(err == "", err)
 
-local user, err = user:update(inline_map!(string, string, {
+local user, err = user:update(map!(string, string, {
   name = "John",
 }))
 
@@ -245,7 +245,7 @@ local Users, err = model.new(&db, "users", "Users",{
 })
 mild_assert!(err == "", err)
 
-local user, err = Users:create(inline_map!(string, string, {
+local user, err = Users:create(map!(string, string, {
   name = "James",
   age = "21"
 }))
@@ -265,7 +265,7 @@ local Players, err = model.new(&db, "players", "Players", {
 })
 mild_assert!(err == "", err)
 
-local player, err = Players:create(inline_map!(string, string, {
+local player, err = Players:create(map!(string, string, {
   name = "Jack",
   age = "25",
   user_id = user:get_col("id"),
@@ -302,13 +302,13 @@ local Users, err = model.new(&db, "users", "Users",{
 })
 mild_assert!(err == "", err)
 
-local user, err = Users:find(inline_map!(string, string, {
+local user, err = Users:find(map!(string, string, {
   name = "James",
   age = "21"
 }))
 mild_assert!(err == "", err)
 
-local player, err = Players:create(inline_map!(string, string, {
+local player, err = Players:create(map!(string, string, {
   name = "John",
   age = "31",
   user_id = user:get_col("id")
@@ -338,14 +338,14 @@ mild_assert!(err == "", err)
 mild_assert!(users[1]:get_col("age") == "")
 mild_assert!(users[1]:get_col("name") ~= "")
 
-local user, err = Users:create(inline_map!(string, string, {
+local user, err = Users:create(map!(string, string, {
   name = "User1",
   age = "20"
 }))
 mild_assert!(err == "", err)
 
 for i = 1, 20 do
-  local player, err = Players:create(inline_map!(string, string, {
+  local player, err = Players:create(map!(string, string, {
     name = "Player" .. i,
     age = tostring(20 + i),
     user_id = user:get_col("id")
@@ -353,7 +353,7 @@ for i = 1, 20 do
   mild_assert!(err == "", err)
 end
 
-local PlayersPaginator, err = Players:offset_paginated(inline_map!(string, string, { user_id = user:get_col("id") }))
+local PlayersPaginator, err = Players:offset_paginated(map!(string, string, { user_id = user:get_col("id") }))
 mild_assert!(err == "", err)
 
 local players, err = PlayersPaginator:get_page(1)

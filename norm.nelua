@@ -3,15 +3,16 @@
 require "io"
 require "math"
 
-require ".thirdparty.inline_map"
+require "map"
+
+local inflect = require "inflect"
+local AnsiColor = require "ansicolor"
 
 local base = require ".utils.base"
 local sqlite = require ".utils.sqlite"
 local pg = require ".utils.pg"
 local mysql = require ".utils.mysql"
 local logger = require ".utils.logger"
-local inflect = require ".thirdparty.inflect"
-local AnsiColor = require ".thirdparty.ansicolor"
 
 --- ### norm
 --- The norm module
@@ -515,7 +516,7 @@ local function db_migrate(db: norm.Db, migrated: hashmap(string, boolean), migra
       return 0, "Migration name cannot be an empty string"
     end
     if not migrated:has(k) then
-      local log_str = AnsiColor.new("Migrating: "):Bright():Yellow():text() .. AnsiColor.new(k):Green():Bright():text()
+      local log_str = AnsiColor.new("Migrating: "):Bright():Yellow():tostring() .. AnsiColor.new(k):Green():Bright():tostring()
       logger.log(db.log, log_str)
       local vals: hashmap(string, string)
       vals["migration"] = k
@@ -537,38 +538,38 @@ local function db_commit_or_rollback(db: norm.Db, err: string, ran_migrations: u
   switch db.kind do
     case norm.DbKind.sqlite then
       if err ~= "" then
-        local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():text()
+        local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():tostring()
         logger.log(db.log, log_str)
         sqlite.rollback(db.conn.sqlite_db)
-        local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():text()
+        local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():tostring()
         logger.log(db.log, log_str)
       else
         sqlite.commit(db.conn.sqlite_db)
-        local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():text()
+        local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():tostring()
         logger.log(db.log, log_str)
       end
     case norm.DbKind.pg then
       if err ~= "" then
-        local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():text()
+        local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():tostring()
         logger.log(db.log, log_str)
         pg.rollback(db.conn.pg_db)
-        local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():text()
+        local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():tostring()
         logger.log(db.log, log_str)
       else
         pg.commit(db.conn.pg_db)
-        local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():text()
+        local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():tostring()
         logger.log(db.log, log_str)
       end
     case norm.DbKind.mysql then
       if err ~= "" then
-        local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():text()
+        local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():tostring()
         logger.log(db.log, log_str)
         mysql.rollback(db.conn.mysql_db)
-        local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():text()
+        local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():tostring()
         logger.log(db.log, log_str)
       else
         mysql.commit(db.conn.mysql_db)
-        local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():text()
+        local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():tostring()
         logger.log(db.log, log_str)
       end
     else
@@ -813,12 +814,12 @@ If no error occurs, the string is empty
 ---`
 function norm.Schema.migrate(db: norm.Db, migrations: hashmap(string, norm.Schema.MigrationFn)): string
 ---`
-  local log_str = AnsiColor.new("Running migrations"):Bright():Yellow():text()
+  local log_str = AnsiColor.new("Running migrations"):Bright():Yellow():tostring()
   logger.log(db.log, log_str)
   if not db:table_exists("norm_migrations") then
-    local log_str = AnsiColor.new("Migrations table does not exist"):Bright():Yellow():text()
+    local log_str = AnsiColor.new("Migrations table does not exist"):Bright():Yellow():tostring()
     logger.log(db.log, log_str)
-    local log_str = AnsiColor.new("Creating migrations table"):Bright():Yellow():text()
+    local log_str = AnsiColor.new("Creating migrations table"):Bright():Yellow():tostring()
     logger.log(db.log, log_str)
     local err = norm.Schema.create_table(db, "norm_migrations", {
       {"migration", norm.Schema.ColumnType.varchar, { primary_key = true }}
@@ -893,6 +894,8 @@ local norm.Model.OffsetPaginator = @record{
   parent: *norm.Model,
   per_page: uinteger,
   fields: sequence(string),
+  order_by: string,
+  order: string,
   where: string
 }
 ---`
@@ -1106,12 +1109,6 @@ If no error occurs, the string is empty
 function norm.Model:offset_paginated(conditions: overload(hashmap(string, string), string), opts: norm.Model.OffsetPaginatorOpts): (norm.Model.OffsetPaginator, string)
 ---`
   local sb: stringbuilder
-  local fields: sequence(string)
-  if #opts.fields > 0 then
-    fields = opts.fields
-  else
-    fields:push("*")
-  end
   sb:writef("FROM %s WHERE", norm.escape_identifier(self.tbl_name))
   ## if conditions.type.is_hashmap then
     if not next(conditions) then
@@ -1127,18 +1124,17 @@ function norm.Model:offset_paginated(conditions: overload(hashmap(string, string
     end
     sb:write(conditions)
   ## end
-  sb:writef(
-    " ORDER BY %s %s",
-    opts.order_by ~= "" and norm.escape_literal(opts.order_by) or '"id"',
-    opts.order ~= "" and opts.order or "ASC"
-  )
 
   local where = sb:promote()
+
+  local fields: sequence(string) = {"*"}
 
   return {
     parent = self,
     per_page = opts.per_page ~= 0 and opts.per_page or 10,
-    fields = fields,
+    fields = #opts.fields > 0 and opts.fields or fields,
+    order_by = opts.order_by ~= "" and norm.escape_literal(opts.order_by) or '"id"',
+    order = opts.order ~= "" and opts.order or "ASC",
     where = where
   }, ""
 end
@@ -1157,16 +1153,14 @@ function norm.Model.OffsetPaginator:get_page(page: uinteger): (sequence(norm.Mod
   if not self.parent then
     return {}, "This paginator's parent does not exist"
   end
-  local rows, err = self.parent.db:query(
-    "SELECT "
-    .. string.concat(self.fields, ",")
-    .. " "
-    .. self.where
-    .. " LIMIT "
-    .. self.per_page
-    .. " OFFSET "
-    .. self.per_page * page - self.per_page
-  )
+  local rows, err = self.parent.db:query(("SELECT %s %s ORDER BY %s %s LIMIT %s OFFSET %s"):format(
+    string.concat(self.fields, ","),
+    self.where,
+    self.order_by,
+    self.order,
+    self.per_page,
+    self.per_page * page - self.per_page
+  ))
   if err ~= "" then
     return {}, err
   end
@@ -1273,7 +1267,7 @@ function norm.Model.Inst:update(values: hashmap(string, string), returning: facu
   if err ~= "" then
     return {}, "Could not match primary key in model: " .. err
   end
-  local conds = inline_map!(string, string, {
+  local conds = map!(string, string, {
     [self.parent.primary_keys[1]] = id
   })
   local rows, err = self.parent.db:update(self.parent.tbl_name, values, conds, returning)
@@ -1340,7 +1334,7 @@ function norm.Model.Inst:get_belongs_to(rel_name: string): (norm.Model.Inst, str
         return {}, ("Model `%s` in db instance is a nilptr"):format(rel.model_name)
       end
       local model = (@*norm.Model)(model_ptr)
-      return model:find(inline_map!(string, string, {
+      return model:find(map!(string, string, {
         [model.primary_keys[1]] = id
       }))
     end
@@ -1369,7 +1363,7 @@ function norm.Model.Inst:get_has_one(rel_name: string): (norm.Model.Inst, string
       if rel.key ~= "" then
         key = rel.key
       else
-        key = inflect.depluralize(self.parent.tbl_name) .. "_id"
+        key = inflect.singularize(self.parent.tbl_name) .. "_id"
       end
       local id, err = self:get_col(self.parent.primary_keys[1])
       if err ~= "" then
@@ -1383,7 +1377,7 @@ function norm.Model.Inst:get_has_one(rel_name: string): (norm.Model.Inst, string
         return {}, ("Model `%s` in db instance is a nilptr"):format(rel.model_name)
       end
       local model = (@*norm.Model)(model_ptr)
-      return model:find(inline_map!(string, string, {
+      return model:find(map!(string, string, {
         [key] = id
       }))
     end
@@ -1412,7 +1406,7 @@ function norm.Model.Inst:get_has_many(rel_name: string): (sequence(norm.Model.In
       if rel.key ~= "" then
         key = rel.key
       else
-        key = inflect.depluralize(self.parent.tbl_name) .. "_id"
+        key = inflect.singularize(self.parent.tbl_name) .. "_id"
       end
       local id, err = self:get_col(self.parent.primary_keys[1])
       if err ~= "" then
@@ -1426,7 +1420,7 @@ function norm.Model.Inst:get_has_many(rel_name: string): (sequence(norm.Model.In
         return {}, ("Model `%s` in db instance is a nilptr"):format(rel.model_name)
       end
       local model = (@*norm.Model)(model_ptr)
-      return model:select(inline_map!(string, string, {
+      return model:select(map!(string, string, {
         [key] = id
       }))
     end
