@@ -18,17 +18,17 @@ return {
     {
       name = "ansicolor-nelua",
       repo = "https://github.com/kmafeni04/ansicolor-nelua",
-      version = "#0b5f769242a441bdb4d293957be240e6fb694428",
+      version = "#82d3d7e1154316ca75c7a52c4f17eb2d67add499",
     },
     {
       name = "map-nelua",
       repo = "https://github.com/kmafeni04/map-nelua",
-      version = "#4572efa8784fcce5763073007852573fb578fbdd",
+      version = "#74f7d0ebbf5057ba202f2659d25c75b225b17d7d",
     },
     {
       name = "inflect-nelua",
       repo = "https://github.com/kmafeni04/inflect-nelua",
-      version = "#f57ebd68f4274bbf7f40ec409dea38c08bc733c1",
+      version = "#9e65ff4ff711c7466eda95d62568400f092f631b",
     },
     {
       name = "mariadb-bindings-nelua",

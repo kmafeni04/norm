@@ -1,6 +1,6 @@
 require "..thirdparty.sqlite"
 
-local AnsiColor = require "ansicolor"
+local AnsiColor = require "ansicolor-nelua.ansicolor"
 local logger = require ".logger"
 
 local M = @record{}

@@ -3,10 +3,10 @@
 require "io"
 require "math"
 
-require "map"
+require "map-nelua.map"
 
-local inflect = require "inflect"
-local AnsiColor = require "ansicolor"
+local inflect = require "inflect-nelua.inflect"
+local AnsiColor = require "ansicolor-nelua.ansicolor"
 
 local base = require ".utils.base"
 local sqlite = require ".utils.sqlite"

@@ -1,6 +1,6 @@
-require "libpq-fe"
+require "libpq-fe-bindings-nelua.libpq-fe"
 
-local AnsiColor = require "ansicolor"
+local AnsiColor = require "ansicolor-nelua.ansicolor"
 local logger = require ".logger"
 
 local M = @record{}

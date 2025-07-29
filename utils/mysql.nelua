@@ -1,6 +1,6 @@
-require "mariadb"
+require "mariadb-bindings-nelua.mariadb"
 
-local AnsiColor = require "ansicolor"
+local AnsiColor = require "ansicolor-nelua.ansicolor"
 local logger = require ".logger"
 
 local M = @record{}
@@ -19,7 +19,7 @@ function M.new(host: string, user: string, password: string, dbname: string, por
     return nilptr, ("Cannot connect to database: %s"):format(err)
   end
 
-  
+
   if mysql_query(conn, "SET sql_notes = 0;") ~= 0 then
     local err = string.copy(mysql_error(conn))
     mysql_close(conn)
