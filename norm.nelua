@@ -9,11 +9,18 @@ local inflect = require "inflect-nelua.inflect"
 local AnsiColor = require "ansicolor-nelua.ansicolor"
 
 local base = require ".utils.base"
-local sqlite = require ".utils.sqlite"
-local pg = require ".utils.pg"
-local mysql = require ".utils.mysql"
-local logger = require ".utils.logger"
 
+## static_assert(NORM_DB and (NORM_DB == "SQLITE" or NORM_DB == "PG" or NORM_DB == "MYSQL"), "DB kind not defined, must be either 'SQLITE', 'PG' or 'MYSQL'")
+
+## if NORM_DB == "SQLITE" then
+  local sqlite = require ".utils.sqlite"
+## elseif NORM_DB == "PG" then
+  local pg = require ".utils.pg"
+## elseif NORM_DB == "MYSQL" then
+  local mysql = require ".utils.mysql"
+## end
+
+local logger = require ".utils.logger"
 --- ### norm
 --- The norm module
 ---`
@@ -38,58 +45,57 @@ local norm.escape_identifier = base.escape_identifier
 local norm.escape_literal = base.escape_literal
 ---`
 
---- ### norm.DbKind
---- Enum used to specify what database is connected in the [norm.Db](#normdb) module
----`
-local norm.DbKind = @enum{
-  not_set = 0,
-  sqlite,
-  pg,
-  mysql
-}
----`
-
 --- ### norm.Config
---- This record is used to configure the ORM on what database should be connected
+--- This record is used to configure the ORM for the specified Database
 ---`
-local norm.Config = @record{
-  kind: norm.DbKind,
-  conn: union{
-    sqlite: record{
-      name: string
-    },
-    pg: record{
-      name: string,
-      user: string,
-      password: string,
-      host: string,
-      port: uinteger
-    },
-    mysql: record{
-      name: string,
-      user: string,
-      password: string,
-      host: string,
-      port: uinteger
-    }
-  },
-  log: logger.NotSetOrBool
-}
+## if NORM_DB == "SQLITE" then
+  local norm.Config = @record{
+    name: string,
+    log: logger.NotSetOrBool
+  }
+## elseif NORM_DB == "PG" then
+  local norm.Config = @record{
+    name: string,
+    user: string,
+    password: string,
+    host: string,
+    port: uinteger,
+    log: logger.NotSetOrBool
+  }
+## elseif NORM_DB == "MYSQL" then
+  local norm.Config = @record{
+    name: string,
+    user: string,
+    password: string,
+    host: string,
+    port: uinteger,
+    log: logger.NotSetOrBool
+  }
+## end
 ---`
 
 --- ### norm.Db
 --- This module is a collection of functions to make queries to the database
 ---`
+## if NORM_DB == "SQLITE" then
 local norm.Db = @record{
-  kind: norm.DbKind,
-  conn: union{
-    sqlite_db: *sqlite.type,
-    pg_db: *pg.type,
-    mysql_db: *mysql.type
-  },
+  conn: *sqlite.type,
   log: logger.NotSetOrBool,
   models: hashmap(string, pointer) -- norm.Model
 }
+## elseif NORM_DB == "PG" then
+local norm.Db = @record{
+  conn: *pg.type,
+  log: logger.NotSetOrBool,
+  models: hashmap(string, pointer) -- norm.Model
+}
+## elseif NORM_DB == "MYSQL" then
+local norm.Db = @record{
+  conn: *mysql.type,
+  log: logger.NotSetOrBool,
+  models: hashmap(string, pointer) -- norm.Model
+}
+## end
 ---`
 
 --- ### norm.Db.new
@@ -100,32 +106,26 @@ If no error occurs, an empty string is returned
 ---`
 function norm.Db.new(conf: norm.Config): (norm.Db, string)
 ---`
-  switch conf.kind do
-    case norm.DbKind.not_set then
-      return {}, "DB object not initialised"
-    case norm.DbKind.sqlite then
-      local sqlite_db, err = sqlite.new(conf.conn.sqlite.name)
-      if err ~= "" then return {}, err end
-      return {kind = conf.kind, conn = {sqlite_db = sqlite_db}, log = conf.log}, ""
-    case norm.DbKind.pg then
-      local info = conf.conn.pg
-      info.user = info.user ~= "" and info.user or "postgres"
-      info.host = info.host ~= "" and info.host or "127.0.0.1"
-      info.port = info.port ~= 0 and info.port or 5432
-      local conn_info = ("dbname=%s user=%s password=%s host=%s port=%s"):format(info.name, info.user, info.password, info.host, info.port)
-      local pg_db, err = pg.new(conn_info)
-      if err ~= "" then return {}, err end
-      return {kind = conf.kind, conn= {pg_db = pg_db}, log = conf.log}, ""
-    case norm.DbKind.mysql then
-      local info = conf.conn.mysql
-      info.user = info.user ~= "" and info.user or "root"
-      info.host = info.host ~= "" and info.host or "127.0.0.1"
-      info.port = info.port ~= 0 and info.port or 3306
-      local mysql_db, err = mysql.new(info.host, info.user, info.password, info.name, info.port)
-      if err ~= "" then return {}, err end
-      return {kind = conf.kind, conn= {mysql_db = mysql_db}, log = conf.log}, ""
-  end
-  return {}, "UNREACHABLE DB NEW"
+  ## if NORM_DB == "SQLITE" then
+    local sqlite_db, err = sqlite.new(conf.name)
+    if err ~= "" then return {}, err end
+    return { sqlite_db, log = conf.log }, ""
+  ## elseif NORM_DB == "PG" then
+    conf.user = conf.user ~= "" and conf.user or "postgres"
+    conf.host = conf.host ~= "" and conf.host or "127.0.0.1"
+    conf.port = conf.port ~= 0 and conf.port or 5432
+    local conn_conf = ("dbname=%s user=%s password=%s host=%s port=%s"):format(conf.name, conf.user, conf.password, conf.host, conf.port)
+    local pg_db, err = pg.new(conn_conf)
+    if err ~= "" then return {}, err end
+    return { pg_db, log = conf.log }, ""
+  ## elseif NORM_DB == "MYSQL" then
+    conf.user = conf.user ~= "" and conf.user or "root"
+    conf.host = conf.host ~= "" and conf.host or "127.0.0.1"
+    conf.port = conf.port ~= 0 and conf.port or 3306
+    local mysql_db, err = mysql.new(conf.host, conf.user, conf.password, conf.name, conf.port)
+    if err ~= "" then return {}, err end
+    return { mysql_db, log = conf.log }, ""
+  ## end
 end
 
 
@@ -134,12 +134,13 @@ end
 ---`
 function norm.Db:destroy()
 ---`
-  switch self.kind do
-    case norm.DbKind.sqlite then
-      sqlite.destroy(self.conn.sqlite_db)
-    case norm.DbKind.pg then
-      pg.destroy(self.conn.pg_db)
-  end
+  ## if NORM_DB == "SQLITE" then
+      sqlite.destroy(self.conn)
+  ## elseif NORM_DB == "PG" then
+      pg.destroy(self.conn)
+  ## elseif NORM_DB == "MYSQL" then
+      mysql.destroy(self.conn)
+  ## end
 end
 
 --- ### norm.Db:query
@@ -151,15 +152,13 @@ All further Db functions are constructed around this function
 ---`
 function norm.Db:query(sql: string): (sequence(hashmap(string, string)), string)
 ---`
-  switch self.kind do
-    case norm.DbKind.sqlite then
-      return sqlite.query(self.log, self.conn.sqlite_db, sql)
-    case norm.DbKind.pg then
-      return pg.query(self.log, self.conn.pg_db, sql)
-    case norm.DbKind.mysql then
-      return mysql.query(self.log, self.conn.mysql_db, sql)
-  end
-  return {}, "UNREACHABLE QUERY"
+  ## if NORM_DB == "SQLITE" then
+    return sqlite.query(self.log, self.conn, sql)
+  ## elseif NORM_DB == "PG" then
+    return pg.query(self.log, self.conn, sql)
+  ## elseif NORM_DB == "MYSQL" then
+    return mysql.query(self.log, self.conn, sql)
+  ## end
 end
 
 --- ### norm.Db:table_exists
@@ -168,18 +167,15 @@ end
 function norm.Db:table_exists(name: string): boolean
 ---`
   local sql: string
-  switch self.kind do
-    case norm.DbKind.sqlite then
-      sql = ("SELECT \"name\" FROM sqlite_master WHERE type = 'table' AND name = %s"):format(norm.escape_literal(name))
-    case norm.DbKind.pg then
-      sql = ("SELECT tablename FROM pg_catalog.pg_tables WHERE tablename = %s"):format(norm.escape_literal(name))
-    case norm.DbKind.mysql then
-      sql = (
-        "SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME = %s"
-      ):format(norm.escape_literal(name))
-    else
-      error("UNKNOWN")
-  end
+  ## if NORM_DB == "SQLITE" then
+    sql = ("SELECT \"name\" FROM sqlite_master WHERE type = 'table' AND name = %s"):format(norm.escape_literal(name))
+  ## elseif NORM_DB == "PG" then
+    sql = ("SELECT tablename FROM pg_catalog.pg_tables WHERE tablename = %s"):format(norm.escape_literal(name))
+  ## elseif NORM_DB == "MYSQL" then
+    sql = (
+      "SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME = %s"
+    ):format(norm.escape_literal(name))
+  ## end
   local rows, err = self:query(sql)
   local res = #rows > 0
   norm.destroy_rows(rows)
@@ -238,7 +234,7 @@ function norm.Db:insert(
   sb:rollback(2)
   sb:write(")")
   ## if returning.type.is_string then
-    if self.kind == norm.DbKind.mysql then
+    ## if NORM_DB == "MYSQL" then
       self:query(sb:promote())
       local ssb: stringbuilder
       if returning == "*" then
@@ -253,13 +249,13 @@ function norm.Db:insert(
       ssb:rollback(#(" AND "))
       ssb:write(" LIMIT 1")
       return self:query(ssb:promote())
-    else
+    ## else
       if returning == "*" then
         sb:writef(" RETURNING %s", returning)
       else
         sb:writef(" RETURNING %s", norm.escape_identifier(returning))
       end
-    end
+    ## end
   ## end
   local sql = sb:promote()
   return self:query(sql)
@@ -302,7 +298,7 @@ function norm.Db:update(
     sb:rollback(#(" AND"))
   ## end
   ## if returning.type.is_string then
-    if self.kind == norm.DbKind.mysql then
+    ## if NORM_DB == "MYSQL" then
       self:query(sb:promote())
       local ssb: stringbuilder
       if returning == "*" then
@@ -323,13 +319,13 @@ function norm.Db:update(
       end
       ssb:write(" LIMIT 1")
       return self:query(ssb:promote())
-    else
+    ## else
       if returning == "*" then
         sb:writef(" RETURNING %s", returning)
       else
         sb:writef(" RETURNING %s", norm.escape_identifier(returning))
       end
-    end
+    ## end
   ## end
   return self:query(sb:promote())
 end
@@ -373,7 +369,7 @@ local norm.Schema = @record{}
 ---`
 
 --- ### norm.Schema.MigrationFn
---- Type alias for what a migration function is in [norm.migrate](#normmigrate)
+--- Type alias for what a migration function is in [norm.Schema.migrate](#normschemamigrate)
 ---`
 local norm.Schema.MigrationFn = @function(db: norm.Db): string
 ---`
@@ -416,31 +412,31 @@ local norm.Schema.ColumnType: type = @enum{
 }
 ---`
 
-local function schema_type_tostring(db_kind: norm.DbKind, st: norm.Schema.ColumnType, opts: norm.Schema.ColumnOpts): (string, string)
+local function schema_type_tostring(st: norm.Schema.ColumnType, opts: norm.Schema.ColumnOpts): (string, string)
   local sb: stringbuilder
   defer sb:destroy() end
   switch st do
     case norm.Schema.ColumnType.integer then
       sb:write("INTEGER ")
     case norm.Schema.ColumnType.serial then
-      if db_kind ~= norm.DbKind.pg then
+      ## if NORM_DB ~= "PG" then
         return "", "serial type is only available in postgres"
-      end
+      ## end
       sb:write("SERIAL ")
     case norm.Schema.ColumnType.id then
-      if db_kind ~= norm.DbKind.mysql then
+      ## if NORM_DB ~= "MYSQL" then
         return "", "id type is only available in mysql"
-      end
+      ## end
       sb:write("INTEGER AUTO_INCREMENT ")
     case norm.Schema.ColumnType.timestamp then
-      if db_kind ~= norm.DbKind.mysql and db_kind ~= norm.DbKind.pg then
+      ## if NORM_DB ~= "MYSQL" and NORM_DB ~= "PG" then
         return "", "timestamp type is only available in mysql and postgres"
-      end
+      ## end
       sb:write("TIMESTAMP ")
     case norm.Schema.ColumnType.date then
-      if db_kind ~= norm.DbKind.mysql and db_kind ~= norm.DbKind.pg then
+      ## if NORM_DB ~= "MYSQL" and NORM_DB ~= "PG" then
         return "", "date type is only available in mysql and postgres"
-      end
+      ## end
       sb:write("DATE ")
     case norm.Schema.ColumnType.numeric then
       sb:write("NUMERIC ")
@@ -480,15 +476,13 @@ local function db_run(db: norm.Db, sql: string): string
 end
 
 local function db_start_transaction(db: norm.Db)
-  switch db.kind do
-    case norm.DbKind.sqlite then
-      return sqlite.begin_transaction(db.conn.sqlite_db)
-    case norm.DbKind.pg then
-      return pg.begin_transaction(db.conn.pg_db)
-    case norm.DbKind.mysql then
-      return mysql.begin_transaction(db.conn.mysql_db)
-  end
-  return "UNREACHABLE DB RUN"
+  ## if NORM_DB == "SQLITE" then
+    return sqlite.begin_transaction(db.conn)
+  ## elseif NORM_DB == "PG" then
+    return pg.begin_transaction(db.conn)
+  ## elseif NORM_DB == "MYSQL" then
+    return mysql.begin_transaction(db.conn)
+  ## end
 end
 
 local function db_get_migrated(db: norm.Db): hashmap(string, boolean)
@@ -535,46 +529,43 @@ local function db_migrate(db: norm.Db, migrated: hashmap(string, boolean), migra
 end
 
 local function db_commit_or_rollback(db: norm.Db, err: string, ran_migrations: uinteger): string
-  switch db.kind do
-    case norm.DbKind.sqlite then
-      if err ~= "" then
-        local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():tostring()
-        logger.log(db.log, log_str)
-        sqlite.rollback(db.conn.sqlite_db)
-        local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():tostring()
-        logger.log(db.log, log_str)
-      else
-        sqlite.commit(db.conn.sqlite_db)
-        local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():tostring()
-        logger.log(db.log, log_str)
-      end
-    case norm.DbKind.pg then
-      if err ~= "" then
-        local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():tostring()
-        logger.log(db.log, log_str)
-        pg.rollback(db.conn.pg_db)
-        local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():tostring()
-        logger.log(db.log, log_str)
-      else
-        pg.commit(db.conn.pg_db)
-        local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():tostring()
-        logger.log(db.log, log_str)
-      end
-    case norm.DbKind.mysql then
-      if err ~= "" then
-        local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():tostring()
-        logger.log(db.log, log_str)
-        mysql.rollback(db.conn.mysql_db)
-        local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():tostring()
-        logger.log(db.log, log_str)
-      else
-        mysql.commit(db.conn.mysql_db)
-        local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():tostring()
-        logger.log(db.log, log_str)
-      end
+  ## if NORM_DB == "SQLITE" then
+    if err ~= "" then
+      local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():tostring()
+      logger.log(db.log, log_str)
+      sqlite.rollback(db.conn)
+      local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():tostring()
+      logger.log(db.log, log_str)
     else
-      err = "UNKONWN DB KIND"
-  end
+      sqlite.commit(db.conn)
+      local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():tostring()
+      logger.log(db.log, log_str)
+    end
+  ## elseif NORM_DB == "PG" then
+    if err ~= "" then
+      local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():tostring()
+      logger.log(db.log, log_str)
+      pg.rollback(db.conn)
+      local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():tostring()
+      logger.log(db.log, log_str)
+    else
+      pg.commit(db.conn)
+      local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():tostring()
+      logger.log(db.log, log_str)
+    end
+  ## elseif NORM_DB == "MYSQL" then
+    if err ~= "" then
+      local log_str = AnsiColor.new("Failed to migrate: " .. err):Bright():Yellow():tostring()
+      logger.log(db.log, log_str)
+      mysql.rollback(db.conn)
+      local log_str = AnsiColor.new("Rolling back"):Bright():Yellow():tostring()
+      logger.log(db.log, log_str)
+    else
+      mysql.commit(db.conn)
+      local log_str = AnsiColor.new(("Ran %d migrations"):format(ran_migrations)):Bright():Yellow():tostring()
+      logger.log(db.log, log_str)
+    end
+  ## end
   return err
 end
 
@@ -632,7 +623,7 @@ function norm.Schema.create_table(
     if v.name == "" then
       return "column name cannot be an empty string"
     end
-    local val, err = schema_type_tostring(db.kind, v.type, v.opts)
+    local val, err = schema_type_tostring(v.type, v.opts)
     if err ~= "" then
       return err
     end
@@ -643,9 +634,11 @@ function norm.Schema.create_table(
     sb:writef(",\n %s", opts.extra_sql)
   end
   sb:write("\n)")
-  if opts.strict and db.kind == norm.DbKind.sqlite then
-    sb:write(" STRICT")
-  end
+  ## if NORM_DB == "SQLITE" then
+    if opts.strict then
+      sb:write(" STRICT")
+    end
+  ## end
   local sql = sb:promote()
 
   return db_run(db, sql)
@@ -729,9 +722,9 @@ function norm.Schema.drop_index(db: norm.Db, name: string, cols: sequence(string
     sb:writef("_%s", v)
   end
   sb:write("_idx\"")
-  if db.kind == norm.DbKind.mysql then
+  ## if NORM_DB == "MYSQL" then
     sb:writef(" on %s", norm.escape_identifier(name))
-  end
+  ## end
 
   local final = sb:promote()
   return db_run(db, final)
@@ -748,7 +741,7 @@ function norm.Schema.add_column(db: norm.Db, tbl_name: string, col: norm.Schema.
   if col.name == "" then
     return "column name cannot be an empty string"
   end
-  local val, err = schema_type_tostring(db.kind, col.type, col.opts)
+  local val, err = schema_type_tostring(col.type, col.opts)
   if err ~= "" then
     return err
   end

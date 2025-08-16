@@ -12,17 +12,13 @@ NB: The db requirements are only specific to whatever databases you make use of 
 
 ## Quick Start
 
-```lua
-local norm = require "path.to.norm"
+```
+## NORM_DB = "SQLITE"
+local norm = require ".norm"
 
 -- Instantiate a new Db object
 local db, err = norm.Db.new({
-  kind = norm.DbKind.sqlite,
-  conn = {
-    sqlite = {
-      name = "test.db"
-    }
-  }
+  name = "test.db"
 })
 
 -- Create and run your Db migrations
@@ -37,7 +33,7 @@ migrations["1"] = function(db: norm.Db): string
   })
   return err
 end
-local err = norm.migrate(db, migrations)
+local err = schema.migrate(db, migrations)
 
 -- Insert a value into the users table
 local users_insert: hashmap(string, string)
@@ -79,10 +75,9 @@ local name, err = user:get_col("name")
 assert(err == "", err)
 print(name) -- Should print "James"
 
--- Delete the User model instance 
+-- Delete the User model instance
 local err = user:delete()
 assert(err == "", err)
-
 ```
 
 ## norm.nelua
@@ -119,47 +114,35 @@ See [base.nelua](#basenelua)
 local norm.escape_literal = base.escape_literal
 ```
 
-### norm.DbKind
-
-Enum used to specify what database is connected in the [norm.Db](#normdb) module
-
-```lua
-local norm.DbKind = @enum{
-  not_set = 0,
-  sqlite,
-  pg,
-  mysql
-}
-```
-
 ### norm.Config
 
-This record is used to configure the ORM on what database should be connected
+This record is used to configure the ORM for the specified Database
 
 ```lua
-local norm.Config = @record{
-  kind: norm.DbKind,
-  conn: union{
-    sqlite: record{
-      name: string
-    },
-    pg: record{
-      name: string,
-      user: string,
-      password: string,
-      host: string,
-      port: uinteger
-    },
-    mysql: record{
-      name: string,
-      user: string,
-      password: string,
-      host: string,
-      port: uinteger
-    }
-  },
-  log: logger.NotSetOrBool
-}
+## if NORM_DB == "SQLITE" then
+  local norm.Config = @record{
+    name: string,
+    log: logger.NotSetOrBool
+  }
+## elseif NORM_DB == "PG" then
+  local norm.Config = @record{
+    name: string,
+    user: string,
+    password: string,
+    host: string,
+    port: uinteger,
+    log: logger.NotSetOrBool
+  }
+## elseif NORM_DB == "MYSQL" then
+  local norm.Config = @record{
+    name: string,
+    user: string,
+    password: string,
+    host: string,
+    port: uinteger,
+    log: logger.NotSetOrBool
+  }
+## end
 ```
 
 ### norm.Db
@@ -167,16 +150,25 @@ local norm.Config = @record{
 This module is a collection of functions to make queries to the database
 
 ```lua
+## if NORM_DB == "SQLITE" then
 local norm.Db = @record{
-  kind: norm.DbKind,
-  conn: union{
-    sqlite_db: *sqlite.type,
-    pg_db: *pg.type,
-    mysql_db: *mysql.type
-  },
+  conn: *sqlite.type,
   log: logger.NotSetOrBool,
   models: hashmap(string, pointer) -- norm.Model
 }
+## elseif NORM_DB == "PG" then
+local norm.Db = @record{
+  conn: *pg.type,
+  log: logger.NotSetOrBool,
+  models: hashmap(string, pointer) -- norm.Model
+}
+## elseif NORM_DB == "MYSQL" then
+local norm.Db = @record{
+  conn: *mysql.type,
+  log: logger.NotSetOrBool,
+  models: hashmap(string, pointer) -- norm.Model
+}
+## end
 ```
 
 ### norm.Db.new
@@ -273,7 +265,7 @@ local norm.Schema = @record{}
 
 ### norm.Schema.MigrationFn
 
-Type alias for what a migration function is in [norm.migrate](#normmigrate)
+Type alias for what a migration function is in [norm.Schema.migrate](#normschemamigrate)
 
 ```lua
 local norm.Schema.MigrationFn = @function(db: norm.Db): string

@@ -1,4 +1,4 @@
-local ssdg = require "ssdg"
+local ssdg = require "ssdg.ssdg"
 
 local gen = ssdg.new({
   lang = "lua",
@@ -27,17 +27,13 @@ NB: The db requirements are only specific to whatever databases you make use of 
 
 ## Quick Start
 
-```:lang:
-local norm = require "path.to.norm"
+```
+## NORM_DB = "SQLITE"
+local norm = require ".norm"
 
 -- Instantiate a new Db object
 local db, err = norm.Db.new({
-  kind = norm.DbKind.sqlite,
-  conn = {
-    sqlite = {
-      name = "test.db"
-    }
-  }
+  name = "test.db"
 })
 
 -- Create and run your Db migrations
@@ -52,7 +48,7 @@ migrations["1"] = function(db: norm.Db): string
   })
   return err
 end
-local err = norm.migrate(db, migrations)
+local err = schema.migrate(db, migrations)
 
 -- Insert a value into the users table
 local users_insert: hashmap(string, string)
@@ -94,10 +90,9 @@ local name, err = user:get_col("name")
 assert(err == "", err)
 print(name) -- Should print "James"
 
--- Delete the User model instance 
+-- Delete the User model instance
 local err = user:delete()
 assert(err == "", err)
-
 ```
 
 ]], { subs = subs })
